@@ -1,8 +1,11 @@
 // Observe → Explain: turn one HAR entry (from chrome.devtools.network) into a layer-by-layer view.
 // Every value produced here comes from the browser, so it is labelled "Observed".
-import { classify, isIPv4 } from './subnet.js';
+import { classify, isIPv4, isIPv6 } from './subnet.js';
 
 export const LABEL = 'Observed';
+
+// IPv4 or IPv6 address type; null when the browser reported nothing usable.
+const safeClassify = ip => (ip && (isIPv4(ip) || isIPv6(ip)) ? classify(ip) : null);
 
 const KEY_HEADERS = ['content-type', 'content-encoding', 'cache-control', 'server', 'alt-svc', 'strict-transport-security', 'location'];
 
@@ -101,7 +104,7 @@ export function explainEntry(entry) {
     network: {
       serverIp: ip || null,
       ipVersion,
-      classification: ip && isIPv4(ip) ? classify(ip) : null,
+      classification: safeClassify(ip),
       note: ip
         ? `Packets were routed to ${ip}. Your machine's private address is usually translated by NAT on the router.`
         : 'Server IP not reported (served from cache or a service worker).',

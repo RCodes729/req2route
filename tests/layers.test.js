@@ -70,3 +70,26 @@ test('compare observed IP with tested DNS answer', () => {
   assert.equal(same.observed.label, 'Observed');
   assert.equal(same.tested.label, 'Tested');
 });
+
+test('IPv6 server addresses are classified too', () => {
+  const x = explainEntry({
+    request: { method: 'GET', url: 'https://cloudflare.com/' },
+    response: { status: 200, httpVersion: 'h3' },
+    serverIPAddress: '[2606:4700::6810:84e5]',
+    timings: { dns: 5, connect: 30, ssl: 20, wait: 40 },
+    time: 80,
+  });
+  assert.equal(x.network.ipVersion, 'IPv6');
+  assert.equal(x.network.classification.category, 'Public');
+});
+
+test('an unparseable server IP does not break the explanation', () => {
+  const x = explainEntry({
+    request: { method: 'GET', url: 'https://example.com/' },
+    response: { status: 200 },
+    serverIPAddress: 'not-an-ip',
+    timings: {},
+    time: 1,
+  });
+  assert.equal(x.network.classification, null);
+});

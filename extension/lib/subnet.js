@@ -105,12 +105,68 @@ const SPECIAL_RANGES = [
   ['127.0.0.0/8', 'Loopback', 'RFC 1122'],
   ['169.254.0.0/16', 'Link-local (APIPA)', 'RFC 3927'],
   ['172.16.0.0/12', 'Private', 'RFC 1918'],
+  ['192.0.2.0/24', 'Documentation (TEST-NET)', 'RFC 5737'],
   ['192.168.0.0/16', 'Private', 'RFC 1918'],
+  ['198.51.100.0/24', 'Documentation (TEST-NET)', 'RFC 5737'],
+  ['203.0.113.0/24', 'Documentation (TEST-NET)', 'RFC 5737'],
   ['224.0.0.0/4', 'Multicast', 'RFC 5771'],
   ['240.0.0.0/4', 'Reserved', 'RFC 1112'],
 ];
 
+/**
+ * Parse an IPv6 address into its eight 16-bit groups.
+ * Handles "::" compression, [brackets], a %zone suffix and an embedded IPv4 tail (::ffff:1.2.3.4).
+ */
+export function parseIPv6(str) {
+  const bad = () => new Error(`Invalid IPv6 address: ${str}`);
+  let s = String(str).trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (s.includes('%')) s = s.slice(0, s.indexOf('%'));
+  if (s.includes('.')) { // embedded IPv4 in the last 32 bits
+    const cut = s.lastIndexOf(':');
+    let v4;
+    try { v4 = parseIPv4(s.slice(cut + 1)); } catch { throw bad(); }
+    s = `${s.slice(0, cut + 1)}${(v4 >>> 16).toString(16)}:${(v4 & 0xffff).toString(16)}`;
+  }
+  const halves = s.split('::');
+  if (halves.length > 2) throw bad();
+  const groups = part => (part === '' ? [] : part.split(':').map(h => {
+    if (!/^[0-9a-f]{1,4}$/.test(h)) throw bad();
+    return parseInt(h, 16);
+  }));
+  const head = groups(halves[0]);
+  if (halves.length === 1) {
+    if (head.length !== 8) throw bad();
+    return head;
+  }
+  const tail = groups(halves[1]);
+  if (head.length + tail.length > 7) throw bad(); // "::" must stand for at least one zero group
+  return [...head, ...new Array(8 - head.length - tail.length).fill(0), ...tail];
+}
+
+export function isIPv6(str) {
+  try { parseIPv6(str); return true; } catch { return false; }
+}
+
+function classifyIPv6(ipStr) {
+  const g = parseIPv6(ipStr);
+  const result = (category, rfc, range, { isPrivate = false, routable = false } = {}) => ({ category, rfc, range, isPrivate, routable });
+  if (g.every(x => x === 0)) return result('Unspecified', 'RFC 4291', '::/128');
+  if (g.slice(0, 7).every(x => x === 0) && g[7] === 1) return result('Loopback', 'RFC 4291', '::1/128');
+  if (g.slice(0, 5).every(x => x === 0) && g[5] === 0xffff) {
+    const inner = classify(toIPv4(((g[6] << 16) | g[7]) >>> 0));
+    return { ...inner, category: `IPv4-mapped (${inner.category})`, range: '::ffff:0:0/96' };
+  }
+  if ((g[0] & 0xffc0) === 0xfe80) return result('Link-local', 'RFC 4291', 'fe80::/10');
+  if ((g[0] & 0xfe00) === 0xfc00) return result('Unique local (ULA)', 'RFC 4193', 'fc00::/7', { isPrivate: true });
+  if ((g[0] & 0xff00) === 0xff00) return result('Multicast', 'RFC 4291', 'ff00::/8');
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return result('Documentation', 'RFC 3849', '2001:db8::/32');
+  if ((g[0] & 0xe000) === 0x2000) return { category: 'Public', rfc: null, isPrivate: false, routable: true };
+  return result('Reserved', 'RFC 4291', null);
+}
+
+/** Classify an IPv4 or IPv6 address (anything containing ":" is treated as IPv6). */
 export function classify(ipStr) {
+  if (String(ipStr).includes(':')) return classifyIPv6(ipStr);
   if (ipStr === '255.255.255.255') {
     return { category: 'Limited broadcast', rfc: 'RFC 919', isPrivate: false, routable: false };
   }
