@@ -29,7 +29,7 @@ main { padding: 12px; }
 .badge.tested { background: var(--tested); }
 .badge.simulated { background: var(--simulated); }
 .badge.calculated { background: var(--calculated); }
-.summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
 .stat b { display: block; font-size: 16px; }
 .split { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; }
