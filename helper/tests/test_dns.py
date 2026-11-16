@@ -68,6 +68,18 @@ class DnsWire(unittest.TestCase):
         self.assertEqual(r["answers"][0], {"name": "www.example.com", "type": "CNAME", "ttl": 300, "value": "edge.example.net"})
         self.assertEqual(r["answers"][1], {"name": "edge.example.net", "type": "A", "ttl": 60, "value": "93.184.215.14"})
 
+    def test_malformed_replies_raise_value_error(self):
+        _, q = server.build_dns_query("www.example.com", txid=7)
+        good = fake_answer(q)
+        broken = [
+            good[:12] + b"\xc0",           # dangling compression pointer
+            good[:-3],                      # answer record cut short
+            good[:12] + b"\x05abc",         # label longer than the packet
+        ]
+        for pkt in broken:
+            with self.assertRaises(ValueError, msg=pkt.hex()):
+                server.parse_dns_response(pkt)
+
     def test_raw_query_over_udp(self):
         r = server.raw_dns_query("www.example.com", f"127.0.0.1:{self.fake.port}")
         self.assertEqual(r["answers"][1]["value"], "93.184.215.14")
