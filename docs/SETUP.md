@@ -42,3 +42,7 @@ python echo_server.py --port 9000 --loss 10 --delay 40
 | TCP/UDP test says "not an approved test target" | Only hosts in `helper\config.json` can be tested; add only machines your team controls |
 | Firewall prompt | Allow on **Private networks** |
 | ARP table empty | Normal on some VPNs; open a local site (your router page) first, then retry |
+| `npm : File ... npm.ps1 cannot be loaded because running scripts is disabled` | Windows PowerShell blocks npm's script wrapper. Use `npm.cmd test`, or run once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` and reopen PowerShell |
+| `The token '&&' is not a valid statement separator` | Windows PowerShell 5.1 has no `&&`. Run the commands on separate lines, or join them with `;` |
+| `start-helper.bat` says Python was not found, but typing `python` opens the Microsoft Store | That is only a placeholder. Install Python from python.org and tick **Add python.exe to PATH** |
+| GitHub CI fails after ~3 s with *account is locked due to a billing issue* | Not a code problem: Actions did not start. Run `npm.cmd test` and `python -m unittest discover -s helper/tests` locally and paste the pass counts in the PR |

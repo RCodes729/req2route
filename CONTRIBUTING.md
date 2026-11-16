@@ -18,7 +18,7 @@ git push -u origin feat/network-vlsm
 
 ## Rules for code
 - `extension/lib/` modules are **pure** (no `chrome.*`, no DOM) so they can be unit-tested in Node.
-- Every result object carries a `label`: `Observed`, `Tested` or `Simulated`.
+- Every result object carries a `label`: `Observed`, `Tested`, `Simulated` or `Calculated` (see `docs/ARCHITECTURE.md`).
 - Never insert page data with `innerHTML`; use the `el()` helper in `panel.js` (it uses `textContent`).
 - The helper must stay localhost-only and allowlist-gated. See `docs/ARCHITECTURE.md`.
 - Add or update a test with every feature.

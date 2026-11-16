@@ -13,7 +13,7 @@ Status key: ✅ already done · ⬜ to do · ✂️ cut (only if everything else
 - ✅ TCP Reno/Tahoe simulator with rwnd, scripted/random loss, baseline comparison
 - ✅ Subnet/CIDR calculator, ACL tester, NAT/PAT logic (`acl.js`)
 - ✅ Helper: `/health /dns /tcp /udp /arp`; echo server with loss/delay
-- ✅ 36 tests + CI
+- ✅ JS + Python test suites + CI (CI is paused while the repo account has a billing lock; run both suites locally before every PR)
 
 ---
 
