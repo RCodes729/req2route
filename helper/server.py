@@ -392,7 +392,7 @@ def read_arp() -> dict:
 
 # --------------------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Req2RouteHelper/0.2"
+    server_version = "Req2RouteHelper/1.0"
     config: dict = DEFAULT_CONFIG
 
     def log_message(self, fmt, *args):  # quieter console
@@ -435,7 +435,7 @@ class Handler(BaseHTTPRequestHandler):
                     has_dnspython = True
                 except ImportError:
                     has_dnspython = False
-                return self._send(200, {"ok": True, "version": "0.2.0", "os": platform.system(),
+                return self._send(200, {"ok": True, "version": "1.0.0", "os": platform.system(),
                                         "dnspython": has_dnspython,
                                         "allowedTargets": self.config["allowed_test_targets"],
                                         "allowedPorts": self.config["allowed_ports"]})
