@@ -50,7 +50,11 @@ function addEntry(entry) {
 
 function renderRow(entry, idx) {
   let host = '';
-  try { host = new URL(entry.request.url).hostname; } catch { host = entry.request.url.slice(0, 40); }
+  try {
+    const u = new URL(entry.request.url);
+    // data:/blob: URLs are built inside the page: no DNS, no connection, no server.
+    host = u.hostname || `${u.protocol} (inline, no network)`;
+  } catch { host = entry.request.url.slice(0, 40); }
   const row = el('tr', { 'data-idx': idx, title: entry.request.url },
     el('td', {}, entry.request.method),
     el('td', {}, entry.response?.status || '—'),
@@ -341,7 +345,8 @@ $('#arp-btn').addEventListener('click', async () => {
 // =====================================================================
 const numList = text => String(text || '').split(/[\s,]+/).filter(Boolean).map(Number).filter(Number.isFinite);
 
-function drawSequence(svg, run, prefix) {
+// sharedMaxT: draw several runs on the same time scale so they can be compared by eye.
+function drawSequence(svg, run, prefix, sharedMaxT) {
   const ns = 'http://www.w3.org/2000/svg';
   const mk = (tag, attrs, text) => {
     const n = document.createElementNS(ns, tag);
@@ -349,7 +354,7 @@ function drawSequence(svg, run, prefix) {
     if (text !== undefined) n.textContent = text;
     return n;
   };
-  const maxT = Math.max(...run.segments.map(s => s.t1), 1);
+  const maxT = sharedMaxT ?? Math.max(...run.segments.map(s => s.t1), 1);
   const W = 340, TOP = 34, SX = 60, RX = 280;
   const scale = Math.min(9, 620 / maxT);
   const H = TOP + maxT * scale + 20;
@@ -400,11 +405,19 @@ $('#win-form').addEventListener('submit', ev => {
     lostPackets: numList(f.get('lostPackets')),
     lostAcks: numList(f.get('lostAcks')),
   };
+  // Run both first, then draw them on one shared time axis so the faster protocol visibly finishes higher up.
+  const runs = {};
+  for (const protocol of ['gbn', 'sr']) {
+    try { runs[protocol] = simulateWindow({ ...opts, protocol }); } catch (e) { runs[protocol] = e; }
+  }
+  const ok = Object.values(runs).filter(r => !(r instanceof Error));
+  const sharedMaxT = ok.length ? Math.max(1, ...ok.flatMap(r => r.segments.map(s => s.t1))) : undefined;
   for (const protocol of ['gbn', 'sr']) {
     const out = $(`#${protocol}-summary`);
     try {
-      const run = simulateWindow({ ...opts, protocol });
-      drawSequence($(`#${protocol}-chart`), run, protocol);
+      const run = runs[protocol];
+      if (run instanceof Error) throw run;
+      drawSequence($(`#${protocol}-chart`), run, protocol, sharedMaxT);
       out.replaceChildren(kv([
         ['Transmissions', run.summary.transmissions],
         ['Retransmissions', run.summary.retransmissions],
@@ -509,6 +522,7 @@ $('#nat-form').addEventListener('submit', ev => {
   }
 });
 $('#nat-form').requestSubmit();
+$('#acl-form').requestSubmit(); // show a verdict on load, like every other card
 
 // =====================================================================
 // LIVE TESTS: RESOLVERS
