@@ -30,11 +30,21 @@
         </div>
         <div id="explain" class="explain"><p class="muted">Select a request to see its journey through each layer.</p></div>
       </div>
+      <details class="card" id="connections-card" open>
+        <summary><h2>Connections <span class="badge observed">Observed</span></h2></summary>
+        <p class="muted">Each row is one TCP or QUIC connection. Many requests on one connection means one handshake was shared (keep-alive or HTTP/2/3 multiplexing).</p>
+        <div id="connections"></div>
+      </details>
     </section>
 
     <!-- EXPERIMENT -->
     <section id="tab-experiment" class="tab">
-      <div class="card">
+      <nav class="jump">Jump to:
+        <a href="#card-tcp">TCP congestion</a> · <a href="#card-window">Sliding window</a> · <a href="#card-whatif">What-if throughput</a> ·
+        <a href="#card-subnet">Subnet</a> · <a href="#card-vlsm">VLSM</a> · <a href="#card-acl">ACL</a> · <a href="#card-nat">NAT/PAT</a>
+      </nav>
+      <h2 class="layer-title">Transport layer</h2>
+      <div class="card" id="card-tcp">
         <h2>TCP congestion &amp; flow control <span class="badge simulated">Simulated</span></h2>
         <form id="tcp-form" class="grid">
           <label>Variant <select name="variant"><option value="reno">Reno</option><option value="tahoe">Tahoe</option></select></label>
@@ -53,7 +63,37 @@
         <div id="tcp-summary" class="kv"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="card-window">
+        <h2>Sliding window: Go-Back-N vs Selective Repeat <span class="badge simulated">Simulated</span></h2>
+        <form id="win-form" class="grid">
+          <label>Packets <input name="packets" type="number" value="8" min="1" max="30"></label>
+          <label>Window size <input name="window" type="number" value="4" min="1" max="16"></label>
+          <label>One-way delay (ticks) <input name="delay" type="number" value="5" min="1" max="20"></label>
+          <label>Timeout (ticks) <input name="timeout" type="number" value="14" min="2" max="80"></label>
+          <label>Lost packets <input name="lostPackets" value="2" placeholder="e.g. 2, 5"></label>
+          <label>Lost ACKs <input name="lostAcks" value="" placeholder="e.g. 4"></label>
+          <div class="actions"><button type="submit" class="primary">Compare</button></div>
+        </form>
+        <div class="two-col">
+          <div><h3 id="gbn-title">Go-Back-N</h3><svg id="gbn-chart" class="seq"></svg><div id="gbn-summary"></div></div>
+          <div><h3 id="sr-title">Selective Repeat</h3><svg id="sr-chart" class="seq"></svg><div id="sr-summary"></div></div>
+        </div>
+        <p class="muted">Blue arrows are data packets, green are ACKs, red ✕ is a loss in the channel, dashed blue is a retransmission. Time runs downward.</p>
+      </div>
+
+      <div class="card" id="card-whatif">
+        <h2>What-if: delay and loss vs throughput <span class="badge simulated">Simulated</span></h2>
+        <form id="whatif-form" class="grid">
+          <label><span>RTT: <output name="rttOut">80</output> ms</span> <input name="rtt" type="range" min="5" max="400" value="80"></label>
+          <label><span>Loss: <output name="lossOut">1</output> %</span> <input name="loss" type="range" min="0.01" max="10" step="0.01" value="1"></label>
+          <label><span>Link: <output name="bwOut">50</output> Mbps</span> <input name="bw" type="range" min="1" max="1000" value="50"></label>
+          <label>MSS (bytes) <input name="mss" type="number" value="1460" min="500" max="9000"></label>
+        </form>
+        <div id="whatif-out"></div>
+      </div>
+
+      <h2 class="layer-title">Network layer</h2>
+      <div class="card" id="card-subnet">
         <h2>Subnet / CIDR calculator <span class="badge simulated">Calculated</span></h2>
         <form id="subnet-form" class="inline">
           <input name="cidr" value="192.168.10.77/26" aria-label="CIDR">
@@ -63,7 +103,23 @@
         <div id="subnet-out" class="kv"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="card-vlsm">
+        <h2>VLSM planner <span class="badge simulated">Calculated</span></h2>
+        <div class="two-col">
+          <form id="vlsm-form" class="grid small">
+            <label>Address block <input name="base" value="192.168.1.0/24"></label>
+            <div class="actions"><button type="submit" class="primary">Plan subnets</button></div>
+          </form>
+          <label class="muted">One subnet per line: name and hosts needed
+            <textarea id="vlsm-reqs" rows="5">Sales 50
+IT 25
+HR 10
+Router link 2</textarea></label>
+        </div>
+        <div id="vlsm-out"></div>
+      </div>
+
+      <div class="card" id="card-acl">
         <h2>ACL decision tester <span class="badge simulated">Simulated</span></h2>
         <div class="two-col">
           <textarea id="acl-rules" rows="7">permit tcp 10.0.0.0/8 any eq 443
@@ -80,6 +136,23 @@ deny ip 192.168.50.0/24 any</textarea>
         </div>
         <div id="acl-out"></div>
       </div>
+
+      <div class="card" id="card-nat">
+        <h2>NAT / PAT (overload) <span class="badge simulated">Simulated</span></h2>
+        <div class="two-col">
+          <label class="muted">Outbound flows: <code>source:port -&gt; destination:port</code>
+            <textarea id="nat-flows" rows="5">192.168.1.10:51000 -> 93.184.215.14:443
+192.168.1.11:51000 -> 93.184.215.14:443
+192.168.1.10:51000 -> 8.8.8.8:53
+192.168.1.12:40000 -> 142.250.181.67:443</textarea></label>
+          <form id="nat-form" class="grid small">
+            <label>Router public IP <input name="publicIp" value="203.0.113.10"></label>
+            <label>First public port <input name="startPort" type="number" value="50000"></label>
+            <div class="actions"><button type="submit" class="primary">Translate</button></div>
+          </form>
+        </div>
+        <div id="nat-out"></div>
+      </div>
     </section>
 
     <!-- LIVE TESTS (python helper) -->
@@ -94,6 +167,12 @@ deny ip 192.168.50.0/24 any</textarea>
         <h2>DNS lookup</h2>
         <form id="dns-form" class="inline"><input name="name" value="example.com"><button class="primary">Resolve</button></form>
         <pre id="dns-out"></pre>
+      </div>
+      <div class="card">
+        <h2>Compare DNS resolvers <span class="badge tested">Tested</span></h2>
+        <p class="muted">Sends a hand-built DNS query (UDP port 53) to Cloudflare, Google and Quad9, and times your system resolver too.</p>
+        <form id="resolvers-form" class="inline"><input name="name" value="www.wikipedia.org"><button class="primary">Compare</button></form>
+        <div id="resolvers-out"></div>
       </div>
       <div class="card">
         <h2>TCP connect / UDP echo</h2>

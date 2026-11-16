@@ -46,3 +46,27 @@ test('page summary counts', () => {
   assert.equal(s.newConnections, 3);
   assert.equal(s.statuses['2xx'], 3);
 });
+
+import { groupByConnection, compareDns } from '../extension/lib/layers.js';
+
+test('group requests by connection', () => {
+  const g = groupByConnection(SAMPLE_ENTRIES);
+  assert.equal(g.length, 3);
+  assert.equal(g[0].connectionId, '1021');
+  assert.equal(g[0].requests, 2);
+  assert.equal(g[0].opened, true);
+  assert.match(g[0].meaning, /multiplexed over one TCP connection/);
+  const quic = g.find(x => x.connectionId === '1188');
+  assert.equal(quic.transport, 'QUIC/UDP');
+});
+
+test('compare observed IP with tested DNS answer', () => {
+  const x = explainEntry(SAMPLE_ENTRIES[0]);
+  const same = compareDns(x, { timeMs: 12, method: 'dnspython', records: [{ type: 'A', value: '93.184.215.14' }] });
+  assert.equal(same.ipMatch, true);
+  const diff = compareDns(x, { timeMs: 12, records: [{ type: 'A', value: '1.2.3.4' }] });
+  assert.equal(diff.ipMatch, false);
+  assert.match(diff.verdict, /CDN/);
+  assert.equal(same.observed.label, 'Observed');
+  assert.equal(same.tested.label, 'Tested');
+});

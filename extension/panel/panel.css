@@ -65,3 +65,17 @@ pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; 
 .verdict.permit { color: var(--observed); }
 .verdict.deny { color: #cf222e; }
 .error { color: #cf222e; }
+.jump { margin-bottom: 8px; color: var(--muted); }
+.jump a { color: var(--accent); text-decoration: none; }
+.layer-title { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 8px; }
+details > summary { cursor: pointer; list-style: none; }
+details > summary h2 { display: inline; }
+details > summary::-webkit-details-marker { display: none; }
+table.data { margin-top: 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+table.data td { max-width: 360px; white-space: normal; }
+svg.seq { width: 100%; height: auto; max-height: 720px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+h3 { font-size: 13px; margin: 8px 0 4px; }
+.meter { height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-top: 6px; }
+.meter span { display: block; height: 100%; background: var(--simulated); }
+.layer.compare { border-color: var(--tested); }
+input[type=range] { width: 100%; }

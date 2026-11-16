@@ -1,6 +1,8 @@
 # Roadmap: one-week plan (16–23 Nov 2026)
 
 **Goal:** submit-ready by **Sun 22 Nov**, with **Mon 23 Nov** as buffer.
+
+**Status (Mon 16 Nov, evening):** all build features below are done and tested (v0.2.0). What remains is testing on Windows with real sites, the report, and the demo.
 **Rule:** the starter repo is the core. Each person adds 1–2 features, nothing more. Feature freeze is **Fri 20 Nov, 11 pm**.
 
 Status key: ✅ already done · ⬜ to do · ✂️ cut (only if everything else is finished)
@@ -35,23 +37,23 @@ Daily check-in (10 min, WhatsApp is fine): what I merged yesterday, what I'm mer
 ## Work per person
 
 ### Abdullah Cheema: Observe & Explain + integration
-- ⬜ Group requests by connection ID → shows HTTP/2 multiplexing (many requests, one TCP connection)
-- ⬜ "Test this host" button: runs helper DNS on the selected request's host and shows **Observed vs Tested** side by side
-- ⬜ Extension icons (16/48/128)
+- ✅ Group requests by connection ID → shows HTTP/2 multiplexing (many requests, one TCP connection)
+- ✅ "Test this host" button: runs helper DNS on the selected request's host and shows **Observed vs Tested** side by side
+- ✅ Extension icons (16/48/128)
 - ⬜ Merge PRs every evening; keep `main` working
 
 ### Huzaifa Maqbool: Transport
-- ⬜ Sliding-window simulator: **Go-Back-N vs Selective Repeat** with a lost segment (new `lib/window.js` + card + tests)
-- ⬜ "What-if" card: RTT and loss sliders → throughput (Mathis) + bandwidth-delay product (both already in `tcpsim.js`)
+- ✅ Sliding-window simulator: **Go-Back-N vs Selective Repeat** with a lost segment (new `lib/window.js` + card + tests)
+- ✅ "What-if" card: RTT and loss sliders → throughput (Mathis) + bandwidth-delay product (both already in `tcpsim.js`)
 
 ### Rehan Ahmed: Network
-- ⬜ NAT/PAT card in the Experiment tab (logic exists: `natTranslate` in `acl.js`)
-- ⬜ VLSM planner: department host counts → allocated subnets (new `lib/vlsm.js` + tests)
+- ✅ NAT/PAT card in the Experiment tab (logic exists: `natTranslate` in `acl.js`)
+- ✅ VLSM planner: department host counts → allocated subnets (new `lib/vlsm.js` + tests)
 
 ### M Hassan: Helper
 - ⬜ Test every endpoint on **Windows** (especially `arp -a` parsing); fix what breaks
-- ⬜ `start-helper.bat` + one-page setup guide in `docs/SETUP.md`
-- ⬜ `/resolvers` endpoint: same name via system vs 1.1.1.1 vs 8.8.8.8 timing (needs dnspython)
+- ✅ `start-helper.bat` + one-page setup guide in `docs/SETUP.md`
+- ✅ `/resolvers` endpoint: same name via system vs 1.1.1.1 vs 8.8.8.8 timing (hand-built DNS packets over UDP/53, no dependencies)
 
 ### Pirzada Ali Shah Mardan: Report, demo, UI
 - ⬜ Report from day 1 (structure below), filled in as features land

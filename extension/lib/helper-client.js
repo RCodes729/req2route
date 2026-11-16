@@ -23,6 +23,7 @@ async function call(path, params = {}) {
 export const helper = {
   health: () => call('/health'),
   dns: name => call('/dns', { name }),
+  resolvers: name => call('/resolvers', { name }),
   tcp: (host, port) => call('/tcp', { host, port }),
   udp: (host, port, count) => call('/udp', { host, port, count }),
   arp: () => call('/arp'),

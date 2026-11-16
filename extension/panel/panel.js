@@ -1,7 +1,9 @@
-import { explainEntry, summarizePage, detectHttpVersion } from '../lib/layers.js';
-import { simulateCongestion } from '../lib/tcpsim.js';
+import { explainEntry, summarizePage, detectHttpVersion, groupByConnection, compareDns } from '../lib/layers.js';
+import { simulateCongestion, mathisThroughput, bandwidthDelayProduct } from '../lib/tcpsim.js';
+import { simulateWindow } from '../lib/window.js';
 import { parseCidr, splitSubnet } from '../lib/subnet.js';
-import { parseAcl, evaluateAcl } from '../lib/acl.js';
+import { planVlsm, parseRequirements } from '../lib/vlsm.js';
+import { parseAcl, evaluateAcl, natTranslate } from '../lib/acl.js';
 import { helper } from '../lib/helper-client.js';
 import { SAMPLE_ENTRIES } from '../lib/sample-har.js';
 
@@ -23,6 +25,10 @@ function el(tag, attrs = {}, ...children) {
 const $ = sel => document.querySelector(sel);
 const badge = label => el('span', { class: `badge ${label.toLowerCase()}` }, label);
 const kv = pairs => el('dl', { class: 'kv' }, pairs.filter(([, v]) => v !== null && v !== undefined && v !== '').flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, String(v))]));
+
+const table = (headers, rows) => el('table', { class: 'data' },
+  el('thead', {}, el('tr', {}, headers.map(h => el('th', {}, h)))),
+  el('tbody', {}, rows.map(r => el('tr', {}, r.map(v => el('td', { title: String(v ?? '') }, v ?? ''))))));
 
 // ---------- tabs ----------
 document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
@@ -74,6 +80,15 @@ function renderSummary() {
     stat('protocols', Object.entries(s.protocols).map(([k, v]) => `${k}×${v}`).join(' ') || '—'),
     badge(s.label),
   );
+  renderConnections();
+}
+
+function renderConnections() {
+  const groups = groupByConnection(entries);
+  $('#connections').replaceChildren(groups.length ? table(
+    ['Connection', 'Transport', 'HTTP', 'Server IP', 'Hosts', 'Requests', 'Connect (TCP+TLS)', 'What it means'],
+    groups.map(g => [g.connectionId, g.transport, g.httpVersion, g.serverIp || '—', g.hosts.join(', '), g.requests, g.opened ? `${g.handshakeMs} ms` : 'reused / none', g.meaning]),
+  ) : el('p', { class: 'muted' }, 'No requests yet.'));
 }
 
 const PHASE_COLORS = { browser: 'var(--browser)', application: 'var(--app)', transport: 'var(--transport)' };
@@ -117,7 +132,30 @@ function renderExplain(entry) {
     el('div', { class: 'layer' },
       el('h3', {}, 'Data link layer'),
       el('p', { class: 'muted' }, x.link.note)),
+    el('div', { class: 'layer compare' },
+      el('h3', {}, 'Observed vs Tested'),
+      el('p', { class: 'muted' }, `Ask the helper to resolve ${x.host} now and compare with what the browser used.`),
+      el('button', { class: 'primary', onclick: () => runCompare(x) }, `Test ${x.host}`),
+      el('div', { id: 'compare-out' })),
   );
+}
+
+async function runCompare(x) {
+  const out = $('#compare-out');
+  out.replaceChildren(el('p', { class: 'muted' }, 'Resolving…'));
+  try {
+    const c = compareDns(x, await helper.dns(x.host));
+    out.replaceChildren(
+      table(['', 'Server IP / answers', 'DNS time'], [
+        [badge('Observed'), c.observed.serverIp || '—', c.observed.dnsMs !== null ? `${c.observed.dnsMs} ms` : 'cached / reused'],
+        [badge('Tested'), c.tested.addresses.join(', ') || '—', `${c.tested.resolverMs} ms (${c.tested.method.split(' ')[0]})`],
+      ]),
+      el('p', { class: c.ipMatch === false ? 'verdict deny' : 'verdict permit' }, c.verdict),
+      c.tested.records.some(r => r.ttl !== null) ? table(['Type', 'Value', 'TTL (s)'], c.tested.records.map(r => [r.type, r.value, r.ttl])) : null,
+    );
+  } catch (e) {
+    out.replaceChildren(el('p', { class: 'error' }, e.message));
+  }
 }
 
 function resetObserve() {
@@ -295,5 +333,205 @@ $('#arp-btn').addEventListener('click', async () => {
       el('tbody', {}, r.entries.map(e => el('tr', {}, [e.interface, e.ip, e.mac, e.type, e.note || ''].map(v => el('td', {}, v ?? '')))))));
   } catch (e) {
     out.textContent = e.message;
+  }
+});
+
+// =====================================================================
+// EXPERIMENT: SLIDING WINDOW (GBN vs SR)
+// =====================================================================
+const numList = text => String(text || '').split(/[\s,]+/).filter(Boolean).map(Number).filter(Number.isFinite);
+
+function drawSequence(svg, run, prefix) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const mk = (tag, attrs, text) => {
+    const n = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const maxT = Math.max(...run.segments.map(s => s.t1), 1);
+  const W = 340, TOP = 34, SX = 60, RX = 280;
+  const scale = Math.min(9, 620 / maxT);
+  const H = TOP + maxT * scale + 20;
+  const y = t => TOP + t * scale;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.replaceChildren();
+  const defs = mk('defs', {});
+  for (const [id, color] of [['data', '#0969da'], ['ack', '#1a7f37']]) {
+    const m = mk('marker', { id: `${prefix}-${id}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' });
+    m.append(mk('path', { d: 'M0,0 L10,5 L0,10 z', fill: color }));
+    defs.append(m);
+  }
+  svg.append(defs);
+  svg.append(mk('text', { x: SX, y: 14, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: 'currentColor' }, 'Sender'));
+  svg.append(mk('text', { x: RX, y: 14, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: 'currentColor' }, 'Receiver'));
+  for (const x of [SX, RX]) svg.append(mk('line', { x1: x, y1: TOP - 10, x2: x, y2: H - 5, stroke: 'currentColor', 'stroke-opacity': 0.35 }));
+
+  for (const s of run.segments) {
+    const fromX = s.kind === 'data' ? SX : RX;
+    const toX = s.kind === 'data' ? RX : SX;
+    const color = s.kind === 'data' ? '#0969da' : '#1a7f37';
+    const y0 = y(s.t0);
+    const y1 = y(s.t1);
+    if (s.lost) {
+      const mx = (fromX + toX) / 2;
+      const my = (y0 + y1) / 2;
+      svg.append(mk('line', { x1: fromX, y1: y0, x2: mx, y2: my, stroke: color, 'stroke-width': 1.4, 'stroke-dasharray': s.retransmission ? '4 3' : '' }));
+      svg.append(mk('text', { x: mx, y: my + 4, 'text-anchor': 'middle', 'font-size': 13, fill: '#cf222e', 'font-weight': 700 }, '✕'));
+    } else {
+      svg.append(mk('line', { x1: fromX, y1: y0, x2: toX, y2: y1, stroke: color, 'stroke-width': 1.4, 'stroke-dasharray': s.retransmission ? '4 3' : '', 'marker-end': `url(#${prefix}-${s.kind})` }));
+    }
+    const lx = s.kind === 'data' ? SX - 6 : RX + 6;
+    svg.append(mk('text', { x: lx, y: y0 + 3, 'text-anchor': s.kind === 'data' ? 'end' : 'start', 'font-size': 9, fill: color }, s.kind === 'data' ? `P${s.seq}` : `A${s.seq}`));
+  }
+  for (const l of run.log.filter(l => l.text.startsWith('Timeout'))) {
+    svg.append(mk('text', { x: SX + 4, y: y(l.time) - 2, 'font-size': 9, fill: '#9a6700' }, '⏱ timeout'));
+  }
+}
+
+$('#win-form').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  const opts = {
+    packets: Number(f.get('packets')),
+    window: Number(f.get('window')),
+    delay: Number(f.get('delay')),
+    timeout: Number(f.get('timeout')),
+    lostPackets: numList(f.get('lostPackets')),
+    lostAcks: numList(f.get('lostAcks')),
+  };
+  for (const protocol of ['gbn', 'sr']) {
+    const out = $(`#${protocol}-summary`);
+    try {
+      const run = simulateWindow({ ...opts, protocol });
+      drawSequence($(`#${protocol}-chart`), run, protocol);
+      out.replaceChildren(kv([
+        ['Transmissions', run.summary.transmissions],
+        ['Retransmissions', run.summary.retransmissions],
+        ['Finished at tick', run.summary.completionTime ?? 'did not finish'],
+        ['Efficiency', `${run.summary.efficiencyPct}% of sends were useful`],
+      ]));
+    } catch (e) {
+      out.replaceChildren(el('span', { class: 'error' }, e.message));
+    }
+  }
+  const timeoutTicks = opts.timeout;
+  if (timeoutTicks <= 2 * opts.delay) {
+    $('#sr-summary').append(el('p', { class: 'error' }, `Timeout (${timeoutTicks}) ≤ RTT (${2 * opts.delay}): packets will be resent before their ACK can arrive.`));
+  }
+});
+$('#win-form').requestSubmit();
+
+// =====================================================================
+// EXPERIMENT: WHAT-IF THROUGHPUT
+// =====================================================================
+function fmtBps(bps) {
+  if (!Number.isFinite(bps)) return '∞';
+  if (bps >= 1e9) return `${(bps / 1e9).toFixed(2)} Gbps`;
+  if (bps >= 1e6) return `${(bps / 1e6).toFixed(2)} Mbps`;
+  return `${Math.round(bps / 1e3)} kbps`;
+}
+
+function renderWhatIf() {
+  const form = $('#whatif-form');
+  const f = new FormData(form);
+  const rtt = Number(f.get('rtt'));
+  const loss = Number(f.get('loss')) / 100;
+  const bw = Number(f.get('bw'));
+  const mss = Number(f.get('mss'));
+  form.rttOut.value = rtt; form.lossOut.value = (loss * 100).toFixed(2); form.bwOut.value = bw;
+
+  const tput = (r, p) => Math.min(mathisThroughput({ mss, rttMs: r, lossRate: p }), bw * 1e6);
+  const now = tput(rtt, loss);
+  const limitedBy = mathisThroughput({ mss, rttMs: rtt, lossRate: loss }) >= bw * 1e6 ? 'link capacity' : 'loss and RTT (TCP backs off)';
+  const bdp = bandwidthDelayProduct({ bandwidthMbps: bw, rttMs: rtt });
+  const util = Math.round((now / (bw * 1e6)) * 100);
+
+  $('#whatif-out').replaceChildren(
+    el('div', { class: 'meter' }, el('span', { style: { width: `${util}%` } })),
+    kv([
+      ['Estimated TCP throughput', `${fmtBps(now)} (${util}% of the link)`],
+      ['Limited by', limitedBy],
+      ['Bandwidth-delay product', `${Math.round(bdp.bytes / 1024)} KB ≈ ${bdp.segments1460} segments must be in flight to fill the link`],
+      ['If RTT doubles', fmtBps(tput(rtt * 2, loss))],
+      ['If loss doubles', fmtBps(tput(rtt, Math.min(loss * 2, 0.99)))],
+      ['If loss halves', fmtBps(tput(rtt, loss / 2))],
+      ['Model', 'Mathis et al.: throughput ≈ (MSS / RTT) × 1.22 / √loss, capped at link speed'],
+    ]),
+  );
+}
+$('#whatif-form').addEventListener('input', renderWhatIf);
+renderWhatIf();
+
+// =====================================================================
+// EXPERIMENT: VLSM
+// =====================================================================
+$('#vlsm-form').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const out = $('#vlsm-out');
+  try {
+    const plan = planVlsm(new FormData(ev.target).get('base'), parseRequirements($('#vlsm-reqs').value));
+    out.replaceChildren(
+      table(['Subnet', 'Hosts needed', 'Network', 'Mask', 'Usable range', 'Broadcast', 'Usable', 'Unused'],
+        plan.allocations.map(a => [a.name, a.requestedHosts, `${a.network}/${a.prefix}`, a.mask, `${a.firstHost} – ${a.lastHost}`, a.broadcast, a.hostCount, a.wasted])),
+      el('p', { class: 'muted' }, `Allocated largest first. ${plan.usedAddresses} of ${plan.usedAddresses + plan.freeAddresses} addresses used${plan.nextFree ? `; next free address ${plan.nextFree}` : '; block is full'}.`),
+    );
+  } catch (e) {
+    out.replaceChildren(el('p', { class: 'error' }, e.message));
+  }
+});
+$('#vlsm-form').requestSubmit();
+
+// =====================================================================
+// EXPERIMENT: NAT / PAT
+// =====================================================================
+function parseFlows(text) {
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const m = line.match(/^([\d.]+):(\d+)\s*-+>\s*([\d.]+):(\d+)$/);
+    if (!m) throw new Error(`Write each flow as "10.0.0.5:51000 -> 93.184.215.14:443", got: "${line}"`);
+    return { src: m[1], srcPort: Number(m[2]), dst: m[3], dstPort: Number(m[4]) };
+  });
+}
+
+$('#nat-form').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  const out = $('#nat-out');
+  try {
+    const r = natTranslate(parseFlows($('#nat-flows').value), { publicIp: f.get('publicIp'), startPort: Number(f.get('startPort')) });
+    out.replaceChildren(
+      table(['Inside local (private)', 'Inside global (after NAT)', 'Outside (server)', 'Translated?'],
+        r.table.map(t => [t.insideLocal || `${t.src}:${t.srcPort}`, t.insideGlobal || '—', t.outside || `${t.dst}:${t.dstPort}`, t.translated ? 'yes' : t.note])),
+      el('p', { class: 'muted' }, `Every private socket gets its own public port on ${r.publicIp}. Replies come back to that port and the router uses this table to forward them inside. The same inside socket reuses its mapping.`),
+    );
+  } catch (e) {
+    out.replaceChildren(el('p', { class: 'error' }, e.message));
+  }
+});
+$('#nat-form').requestSubmit();
+
+// =====================================================================
+// LIVE TESTS: RESOLVERS
+// =====================================================================
+$('#resolvers-form').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const out = $('#resolvers-out');
+  out.replaceChildren(el('p', { class: 'muted' }, 'Querying…'));
+  try {
+    const r = await helper.resolvers(new FormData(ev.target).get('name'));
+    out.replaceChildren(
+      table(['Resolver', 'Server', 'Time', 'Answers', 'Packet sizes'],
+        r.results.map(x => [
+          x.resolver + (x.resolver === r.fastest ? ' ⚡' : ''),
+          x.server,
+          x.ok ? `${x.timeMs} ms` : 'failed',
+          !x.ok ? x.error
+            : (x.answers || []).map(a => `${a.type} ${a.value} (TTL ${a.ttl})`).join('; ') || x.addresses.join(', ') || `no answers${x.rcode ? ` (${x.rcode})` : ''}`,
+          x.bytesSent ? `${x.bytesSent} B query / ${x.bytesReceived} B reply` : '',
+        ])),
+      el('p', { class: 'muted' }, r.note),
+    );
+  } catch (e) {
+    out.replaceChildren(el('p', { class: 'error' }, e.message));
   }
 });

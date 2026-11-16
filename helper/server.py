@@ -18,8 +18,10 @@ import argparse
 import json
 import os
 import platform
+import random
 import re
 import socket
+import struct
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = {
     "allowed_test_targets": ["127.0.0.1", "localhost"],
     "allowed_ports": [9000],
+    "dns_resolvers": {"Cloudflare": "1.1.1.1", "Google": "8.8.8.8", "Quad9": "9.9.9.9"},
 }
 
 HOSTNAME_RE = re.compile(
@@ -106,6 +109,130 @@ def dns_lookup(name: str) -> dict:
         "timeMs": round((time.perf_counter() - started) * 1000, 2),
         "records": records,
     }
+
+
+# --------------------------------------------------------------------------- raw DNS over UDP/53
+# Hand-built DNS messages (RFC 1035): no dependencies, and the packet itself is the lesson.
+QTYPES = {"A": 1, "NS": 2, "CNAME": 5, "MX": 15, "AAAA": 28}
+QTYPE_NAMES = {v: k for k, v in QTYPES.items()}
+RCODES = {0: "NOERROR", 1: "FORMERR", 2: "SERVFAIL", 3: "NXDOMAIN", 4: "NOTIMP", 5: "REFUSED"}
+
+
+def build_dns_query(name: str, qtype: str = "A", txid: int | None = None) -> tuple[int, bytes]:
+    if not valid_hostname(name):
+        raise ValueError("Invalid hostname")
+    txid = random.randint(0, 0xFFFF) if txid is None else txid
+    header = struct.pack("!HHHHHH", txid, 0x0100, 1, 0, 0, 0)  # flags: RD=1 (recursion desired)
+    qname = b"".join(bytes([len(label)]) + label.encode("ascii") for label in name.rstrip(".").split(".")) + b"\x00"
+    return txid, header + qname + struct.pack("!HH", QTYPES[qtype], 1)  # class IN
+
+
+def _read_name(msg: bytes, offset: int) -> tuple[str, int]:
+    labels, end, jumps = [], None, 0
+    while True:
+        if offset >= len(msg):
+            raise ValueError("Truncated DNS name")
+        length = msg[offset]
+        if length & 0xC0 == 0xC0:  # compression pointer
+            if end is None:
+                end = offset + 2
+            offset = ((length & 0x3F) << 8) | msg[offset + 1]
+            jumps += 1
+            if jumps > 20:
+                raise ValueError("DNS compression loop")
+            continue
+        if length == 0:
+            offset += 1
+            break
+        labels.append(msg[offset + 1:offset + 1 + length].decode("ascii", "replace"))
+        offset += 1 + length
+    return ".".join(labels), (end if end is not None else offset)
+
+
+def parse_dns_response(msg: bytes) -> dict:
+    if len(msg) < 12:
+        raise ValueError("DNS response too short")
+    txid, flags, qd, an, _ns, _ar = struct.unpack("!HHHHHH", msg[:12])
+    off = 12
+    for _ in range(qd):
+        _, off = _read_name(msg, off)
+        off += 4
+    answers = []
+    for _ in range(an):
+        name, off = _read_name(msg, off)
+        rtype, _rclass, ttl, rdlen = struct.unpack("!HHIH", msg[off:off + 10])
+        off += 10
+        rdata = msg[off:off + rdlen]
+        if rtype == 1:
+            value = socket.inet_ntop(socket.AF_INET, rdata)
+        elif rtype == 28:
+            value = socket.inet_ntop(socket.AF_INET6, rdata)
+        elif rtype in (2, 5):
+            value, _ = _read_name(msg, off)
+        elif rtype == 15:
+            pref = struct.unpack("!H", rdata[:2])[0]
+            host, _ = _read_name(msg, off + 2)
+            value = f"{pref} {host}"
+        else:
+            value = rdata.hex()
+        answers.append({"name": name, "type": QTYPE_NAMES.get(rtype, str(rtype)), "ttl": ttl, "value": value})
+        off += rdlen
+    return {
+        "id": txid,
+        "flags": {
+            "qr": bool(flags >> 15 & 1), "aa": bool(flags >> 10 & 1), "tc": bool(flags >> 9 & 1),
+            "rd": bool(flags >> 8 & 1), "ra": bool(flags >> 7 & 1),
+        },
+        "rcode": RCODES.get(flags & 0xF, str(flags & 0xF)),
+        "answers": answers,
+    }
+
+
+def raw_dns_query(name: str, server: str, qtype: str = "A", timeout: float = 2.0) -> dict:
+    host, _, port = server.partition(":")
+    port = int(port or 53)
+    txid, packet = build_dns_query(name, qtype)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.settimeout(timeout)
+        started = time.perf_counter()
+        s.sendto(packet, (host, port))
+        while True:
+            data, _ = s.recvfrom(4096)
+            if len(data) >= 2 and struct.unpack("!H", data[:2])[0] == txid:
+                break  # ignore stray datagrams with the wrong transaction ID
+        elapsed = (time.perf_counter() - started) * 1000
+    result = parse_dns_response(data)
+    result.update({"server": server, "qtype": qtype, "transport": "UDP/53",
+                   "timeMs": round(elapsed, 2), "bytesSent": len(packet), "bytesReceived": len(data)})
+    return result
+
+
+def compare_resolvers(cfg: dict, name: str) -> dict:
+    if not valid_hostname(name):
+        raise ValueError("Invalid hostname")
+    results = []
+    started = time.perf_counter()
+    try:
+        ips = sorted({info[4][0] for info in socket.getaddrinfo(name, None, proto=socket.IPPROTO_TCP)})
+        results.append({"resolver": "System (your OS / router)", "server": "system", "ok": True,
+                        "timeMs": round((time.perf_counter() - started) * 1000, 2), "addresses": ips,
+                        "note": "Uses the OS cache, so a repeat lookup is often ~0 ms"})
+    except OSError as exc:
+        results.append({"resolver": "System (your OS / router)", "server": "system", "ok": False, "error": str(exc)})
+    for label, server in cfg.get("dns_resolvers", {}).items():
+        try:
+            r = raw_dns_query(name, server)
+            results.append({"resolver": label, "server": server, "ok": True, "timeMs": r["timeMs"],
+                            "rcode": r["rcode"], "bytesSent": r["bytesSent"], "bytesReceived": r["bytesReceived"],
+                            "addresses": [a["value"] for a in r["answers"] if a["type"] in ("A", "AAAA")],
+                            "answers": r["answers"]})
+        except (OSError, ValueError) as exc:
+            results.append({"resolver": label, "server": server, "ok": False, "error": str(exc) or type(exc).__name__})
+    ok = [r for r in results if r["ok"]]
+    answered = [r for r in ok if r.get("addresses")]
+    fastest = min(answered, key=lambda r: r["timeMs"])["resolver"] if answered else None
+    return {"name": name, "fastest": fastest, "results": results,
+            "note": "Different resolvers may return different IPs for CDN-hosted sites; TTLs show how long each answer may be cached."}
 
 
 # --------------------------------------------------------------------------- TCP / UDP
@@ -244,7 +371,7 @@ def read_arp() -> dict:
 
 # --------------------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Req2RouteHelper/0.1"
+    server_version = "Req2RouteHelper/0.2"
     config: dict = DEFAULT_CONFIG
 
     def log_message(self, fmt, *args):  # quieter console
@@ -283,12 +410,14 @@ class Handler(BaseHTTPRequestHandler):
                     has_dnspython = True
                 except ImportError:
                     has_dnspython = False
-                return self._send(200, {"ok": True, "version": "0.1.0", "os": platform.system(),
+                return self._send(200, {"ok": True, "version": "0.2.0", "os": platform.system(),
                                         "dnspython": has_dnspython,
                                         "allowedTargets": self.config["allowed_test_targets"],
                                         "allowedPorts": self.config["allowed_ports"]})
             if url.path == "/dns":
                 return self._send(200, dns_lookup(q.get("name", "")))
+            if url.path == "/resolvers":
+                return self._send(200, compare_resolvers(self.config, q.get("name", "")))
             if url.path == "/tcp":
                 return self._send(200, tcp_connect_test(self.config, q.get("host", ""), int(q.get("port", 0))))
             if url.path == "/udp":

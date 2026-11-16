@@ -25,6 +25,7 @@ DNS and HTTP at the application layer, TCP/QUIC handshakes and connection reuse 
 4. Click **Analyze this page**. The page reloads and every request is listed and explained.
 
 ### 2. (Optional) Start the helper for live tests
+On Windows, double-click `helper\start-helper.bat`. Full walkthrough: [`docs/SETUP.md`](docs/SETUP.md).
 ```bash
 python helper/server.py                 # localhost:8765, standard library only
 python helper/echo_server.py --port 9000 --loss 10 --delay 40   # team-controlled test endpoint
@@ -40,8 +41,8 @@ cd extension && python -m http.server 8811
 
 ### 4. Run the tests
 ```bash
-npm test          # JS: subnet, TCP sim, ACL/NAT, HAR → layers   (Node 20+)
-npm run test:py   # Python helper: ARP parsing, allowlist, live TCP/UDP echo, HTTP API
+npm test          # JS: subnet, VLSM, TCP sim, sliding window, ACL/NAT, HAR → layers   (Node 20+)
+npm run test:py   # Python helper: DNS wire format, ARP parsing, allowlist, live TCP/UDP echo, HTTP API
 ```
 
 ---
@@ -56,13 +57,16 @@ extension/
   lib/
     layers.js            HAR entry → application / transport / network / link explanation   [Observed]
     tcpsim.js            TCP Reno/Tahoe congestion + flow control model, Mathis, BDP        [Simulated]
+    window.js            Go-Back-N vs Selective Repeat discrete-event simulator             [Simulated]
     subnet.js            IPv4, CIDR, masks, private/public classification, subnet splitting
+    vlsm.js              VLSM planner (largest subnet first, aligned blocks)
     acl.js               ACL parser + first-match evaluation, NAT/PAT translation           [Simulated]
     helper-client.js     calls the Python helper                                            [Tested]
     sample-har.js        sample data for demo mode and tests
 helper/
-  server.py              localhost API: /health /dns /tcp /udp /arp
+  server.py              localhost API: /health /dns /resolvers /tcp /udp /arp
   echo_server.py         TCP+UDP echo endpoint with optional loss/delay injection
+  start-helper.bat       Windows: double-click to start helper + echo server
   tests/                 Python unit + integration tests
 tests/                   Node unit tests for extension/lib
 docs/                    architecture, roadmap, report notes
@@ -72,9 +76,9 @@ docs/                    architecture, roadmap, report notes
 
 | Layer | Observed | Tested | Simulated |
 |---|---|---|---|
-| Application: DNS, HTTP | methods, status codes, headers, HTTP version, timing waterfall | DNS records + resolver time | — |
-| Transport: TCP, UDP, QUIC | new vs reused connections, handshake/TLS time, ports | TCP handshake timing, UDP echo loss/RTT | cwnd/ssthresh (Reno/Tahoe), rwnd flow control, random/scripted loss |
-| Network: IP, CIDR, NAT, ACL | server IP, IPv4/IPv6, address type | — | subnet calculator, ACL first-match, PAT table |
+| Application: DNS, HTTP | methods, status codes, headers, HTTP version, timing waterfall | DNS records; Observed-vs-Tested IP comparison; resolver comparison with hand-built DNS packets | — |
+| Transport: TCP, UDP, QUIC | new vs reused connections, handshake/TLS time, ports, requests per connection (HTTP/2 multiplexing) | TCP handshake timing, UDP echo loss/RTT (with injected loss/delay) | cwnd/ssthresh (Reno/Tahoe), rwnd flow control; Go-Back-N vs Selective Repeat; RTT/loss/bandwidth what-if (Mathis, BDP) |
+| Network: IP, CIDR, NAT, ACL | server IP, IPv4/IPv6, address type | — | subnet calculator, VLSM planner, ACL first-match, NAT/PAT table |
 | Data link: ARP, VLAN, STP | — (browsers can't see it) | ARP cache (with permission) | VLAN isolation and STP *(stretch goal)* |
 
 HTTPS/TLS is covered only at the basic level here. Deeper security analysis belongs to the separate Information Security project.

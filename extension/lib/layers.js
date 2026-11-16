@@ -152,3 +152,54 @@ export function summarizePage(entries) {
     statuses,
   };
 }
+
+/**
+ * Group requests by the TCP/QUIC connection that carried them.
+ * Several requests on one connection = keep-alive (HTTP/1.1) or multiplexing (HTTP/2, HTTP/3).
+ */
+export function groupByConnection(entries) {
+  const groups = new Map();
+  for (const e of entries) {
+    const id = e.connection || 'unknown';
+    if (!groups.has(id)) {
+      groups.set(id, { connectionId: id, hosts: new Set(), serverIp: e.serverIPAddress || null, httpVersion: detectHttpVersion(e), requests: 0, opened: false, handshakeMs: null });
+    }
+    const g = groups.get(id);
+    g.requests++;
+    try { g.hosts.add(new URL(e.request.url).hostname); } catch { /* ignore */ }
+    const c = ms(e.timings?.connect);
+    if (c) { g.opened = true; g.handshakeMs = c; }
+  }
+  return [...groups.values()]
+    .map(g => {
+      const transport = g.httpVersion === 'HTTP/3' ? 'QUIC/UDP' : 'TCP';
+      let meaning;
+      if (g.connectionId === 'unknown') meaning = 'No connection reported (cache, service worker or failed request).';
+      else if (g.requests === 1) meaning = `One request on its own ${transport} connection.`;
+      else if (g.httpVersion === 'HTTP/2' || g.httpVersion === 'HTTP/3') meaning = `${g.requests} requests multiplexed over one ${transport} connection: only one handshake was paid.`;
+      else meaning = `${g.requests} requests sent one after another on a kept-alive ${transport} connection.`;
+      return { ...g, hosts: [...g.hosts], transport, meaning, label: LABEL };
+    })
+    .sort((a, b) => b.requests - a.requests);
+}
+
+/**
+ * Put what the browser saw next to what the helper measured for the same host.
+ * `observed` is an explainEntry() result, `tested` is a helper /dns result.
+ */
+export function compareDns(observed, tested) {
+  const testedIps = (tested.records || []).filter(r => r.type === 'A' || r.type === 'AAAA').map(r => r.value);
+  const observedIp = observed.network.serverIp;
+  const ipMatch = observedIp ? testedIps.includes(observedIp) : null;
+  let verdict;
+  if (ipMatch === null) verdict = 'The browser did not report a server IP for this request, so there is nothing to compare.';
+  else if (ipMatch) verdict = `Match: the browser connected to ${observedIp}, which is one of the addresses the resolver returned.`;
+  else verdict = `Different address: the browser used ${observedIp} but the resolver now returns ${testedIps.join(', ') || 'nothing'}. Common causes are CDN load balancing (several IPs, rotated per query), a proxy, or the browser's own DNS cache.`;
+  return {
+    host: observed.host,
+    observed: { label: 'Observed', serverIp: observedIp, dnsMs: observed.application.dns.timeMs },
+    tested: { label: 'Tested', addresses: testedIps, resolverMs: tested.timeMs, method: tested.method, records: tested.records || [] },
+    ipMatch,
+    verdict,
+  };
+}
