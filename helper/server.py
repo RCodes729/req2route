@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""Req2Route local helper.
+
+A small localhost-only HTTP service that runs diagnostics a browser extension cannot:
+DNS record lookups, TCP handshake timing, UDP echo/loss tests and reading the ARP cache.
+
+Safety rules (keep these when extending the helper):
+  * binds to 127.0.0.1 only;
+  * accepts requests only from chrome-extension:// origins (or no Origin, e.g. curl);
+  * rejects requests whose Host header is not localhost (blocks DNS-rebinding);
+  * TCP/UDP tests run only against targets listed in config.json.
+
+Standard library only. `pip install dnspython` adds TTL, CNAME, MX and NS records.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import re
+import socket
+import subprocess
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+DEFAULT_PORT = 8765
+HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_CONFIG = {
+    "allowed_test_targets": ["127.0.0.1", "localhost"],
+    "allowed_ports": [9000],
+}
+
+HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}\.?$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\.?$"
+)
+
+
+# --------------------------------------------------------------------------- config
+def load_config(path: str | None = None) -> dict:
+    cfg = dict(DEFAULT_CONFIG)
+    path = path or os.path.join(HERE, "config.json")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            cfg.update(json.load(fh))
+    return cfg
+
+
+def check_target(cfg: dict, host: str, port: int) -> None:
+    if host not in cfg["allowed_test_targets"]:
+        raise PermissionError(
+            f"{host} is not an approved test target. Add it to helper/config.json "
+            "only if your team controls it."
+        )
+    if cfg.get("allowed_ports") and port not in cfg["allowed_ports"]:
+        raise PermissionError(f"Port {port} is not in allowed_ports in helper/config.json")
+
+
+def valid_hostname(name: str) -> bool:
+    return bool(name) and bool(HOSTNAME_RE.match(name))
+
+
+# --------------------------------------------------------------------------- DNS
+def dns_lookup(name: str) -> dict:
+    if not valid_hostname(name):
+        raise ValueError("Invalid hostname")
+    started = time.perf_counter()
+    records: list[dict] = []
+    try:
+        import dns.resolver  # type: ignore  # optional dependency
+
+        method = "dnspython"
+        resolver = dns.resolver.Resolver()
+        for rtype in ("A", "AAAA", "CNAME", "MX", "NS"):
+            try:
+                answer = resolver.resolve(name, rtype, raise_on_no_answer=False)
+            except dns.resolver.NXDOMAIN as exc:
+                raise LookupError(f"{name} does not exist (NXDOMAIN)") from exc
+            except (dns.resolver.NoNameservers, dns.resolver.LifetimeTimeout):
+                continue
+            if answer.rrset is None:
+                continue
+            for r in answer:
+                records.append({"type": rtype, "value": r.to_text(), "ttl": answer.rrset.ttl})
+        servers = list(resolver.nameservers)
+    except ImportError:
+        method = "system resolver (getaddrinfo); install dnspython for TTL/CNAME/MX/NS"
+        servers = []
+        try:
+            infos = socket.getaddrinfo(name, None, proto=socket.IPPROTO_TCP)
+        except socket.gaierror as exc:
+            raise LookupError(f"Could not resolve {name}: {exc}") from exc
+        seen = set()
+        for family, _, _, _, sockaddr in infos:
+            ip = sockaddr[0]
+            if ip in seen:
+                continue
+            seen.add(ip)
+            records.append({"type": "A" if family == socket.AF_INET else "AAAA", "value": ip, "ttl": None})
+    return {
+        "name": name,
+        "method": method,
+        "resolvers": servers,
+        "timeMs": round((time.perf_counter() - started) * 1000, 2),
+        "records": records,
+    }
+
+
+# --------------------------------------------------------------------------- TCP / UDP
+def tcp_connect_test(cfg: dict, host: str, port: int, attempts: int = 3, timeout: float = 3.0) -> dict:
+    check_target(cfg, host, port)
+    samples = []
+    for _ in range(attempts):
+        started = time.perf_counter()
+        try:
+            with socket.create_connection((host, port), timeout=timeout) as s:
+                elapsed = (time.perf_counter() - started) * 1000
+                local, remote = s.getsockname(), s.getpeername()
+                samples.append({
+                    "ok": True,
+                    "handshakeMs": round(elapsed, 3),
+                    "local": f"{local[0]}:{local[1]}",
+                    "remote": f"{remote[0]}:{remote[1]}",
+                })
+        except OSError as exc:
+            samples.append({"ok": False, "error": str(exc)})
+    ok = [s["handshakeMs"] for s in samples if s["ok"]]
+    return {
+        "test": "tcp-connect",
+        "target": f"{host}:{port}",
+        "attempts": attempts,
+        "succeeded": len(ok),
+        "avgHandshakeMs": round(sum(ok) / len(ok), 3) if ok else None,
+        "note": "Each sample is a full 3-way handshake; note the new ephemeral local port every time.",
+        "samples": samples,
+    }
+
+
+def udp_echo_test(cfg: dict, host: str, port: int, count: int = 10, timeout: float = 1.0) -> dict:
+    check_target(cfg, host, port)
+    count = max(1, min(int(count), 100))
+    rtts: list[float | None] = []
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.settimeout(timeout)
+        for seq in range(count):
+            payload = f"R2R {seq} ".encode().ljust(32, b".")
+            started = time.perf_counter()
+            s.sendto(payload, (host, port))
+            got = None
+            deadline = started + timeout
+            while time.perf_counter() < deadline:
+                try:
+                    data, _ = s.recvfrom(2048)
+                except socket.timeout:
+                    break
+                except OSError:  # e.g. ICMP port unreachable on Windows
+                    break
+                if data == payload:
+                    got = (time.perf_counter() - started) * 1000
+                    break
+            rtts.append(round(got, 3) if got is not None else None)
+    received = [r for r in rtts if r is not None]
+    return {
+        "test": "udp-echo",
+        "target": f"{host}:{port}",
+        "sent": count,
+        "received": len(received),
+        "lossPct": round(100 * (count - len(received)) / count, 1),
+        "avgRttMs": round(sum(received) / len(received), 3) if received else None,
+        "note": "UDP has no handshake or retransmission: lost datagrams simply never come back.",
+        "rttsMs": rtts,
+    }
+
+
+# --------------------------------------------------------------------------- ARP
+_WIN_IFACE = re.compile(r"^Interface:\s*([\d.]+)")
+_WIN_ROW = re.compile(r"^\s*(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5})\s+(\w+)")
+_UNIX_ROW = re.compile(r"\((\d{1,3}(?:\.\d{1,3}){3})\)\s+at\s+(\S+)(?:\s+\[\w+\])?\s+on\s+(\S+)")
+
+
+def normalize_mac(mac: str) -> str:
+    return ":".join(p.zfill(2) for p in re.split(r"[:-]", mac)).lower()
+
+
+def mac_note(mac: str) -> str | None:
+    if mac == "ff:ff:ff:ff:ff:ff":
+        return "broadcast"
+    if mac.startswith("01:00:5e"):
+        return "IPv4 multicast"
+    if int(mac.split(":")[0], 16) & 0x02:
+        return "locally administered (often randomised)"
+    return None
+
+
+def parse_arp(text: str) -> list[dict]:
+    """Parse `arp -a` output from Windows, Linux or macOS."""
+    entries = []
+    iface = None
+    for line in text.splitlines():
+        m = _WIN_IFACE.match(line.strip())
+        if m:
+            iface = m.group(1)
+            continue
+        m = _WIN_ROW.match(line)
+        if m:
+            mac = normalize_mac(m.group(2))
+            entries.append({"interface": iface, "ip": m.group(1), "mac": mac, "type": m.group(3).lower(), "note": mac_note(mac)})
+            continue
+        m = _UNIX_ROW.search(line)
+        if m and re.fullmatch(r"[0-9a-fA-F]{1,2}(?::[0-9a-fA-F]{1,2}){5}", m.group(2)):
+            mac = normalize_mac(m.group(2))
+            kind = "static" if "permanent" in line or "PERM" in line else "dynamic"
+            entries.append({"interface": m.group(3), "ip": m.group(1), "mac": mac, "type": kind, "note": mac_note(mac)})
+    return entries
+
+
+def parse_proc_net_arp(text: str) -> list[dict]:
+    """Linux fallback: /proc/net/arp."""
+    entries = []
+    for line in text.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 6 and parts[3] != "00:00:00:00:00:00":
+            mac = normalize_mac(parts[3])
+            entries.append({"interface": parts[5], "ip": parts[0], "mac": mac,
+                            "type": "static" if parts[2] == "0x6" else "dynamic", "note": mac_note(mac)})
+    return entries
+
+
+def read_arp() -> dict:
+    try:
+        out = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=5).stdout
+        entries = parse_arp(out)
+        source = "arp -a"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        if not os.path.exists("/proc/net/arp"):
+            raise RuntimeError("No arp command available on this system")
+        with open("/proc/net/arp", encoding="utf-8") as fh:
+            entries = parse_proc_net_arp(fh.read())
+        source = "/proc/net/arp"
+    return {"source": source, "os": platform.system(), "count": len(entries), "entries": entries}
+
+
+# --------------------------------------------------------------------------- HTTP
+class Handler(BaseHTTPRequestHandler):
+    server_version = "Req2RouteHelper/0.1"
+    config: dict = DEFAULT_CONFIG
+
+    def log_message(self, fmt, *args):  # quieter console
+        print(f"[helper] {self.address_string()} {fmt % args}")
+
+    def _send(self, code: int, obj: dict) -> None:
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        origin = self.headers.get("Origin", "")
+        if origin.startswith("chrome-extension://"):
+            self.send_header("Access-Control-Allow-Origin", origin)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _allowed(self) -> str | None:
+        origin = self.headers.get("Origin")
+        if origin and not origin.startswith("chrome-extension://"):
+            return "Origin not allowed: only the Req2Route extension may call the helper"
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            return "Host header not allowed"
+        return None
+
+    def do_GET(self):  # noqa: N802
+        problem = self._allowed()
+        if problem:
+            return self._send(403, {"error": problem})
+        url = urlparse(self.path)
+        q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        try:
+            if url.path == "/health":
+                try:
+                    import dns.resolver  # noqa: F401
+                    has_dnspython = True
+                except ImportError:
+                    has_dnspython = False
+                return self._send(200, {"ok": True, "version": "0.1.0", "os": platform.system(),
+                                        "dnspython": has_dnspython,
+                                        "allowedTargets": self.config["allowed_test_targets"],
+                                        "allowedPorts": self.config["allowed_ports"]})
+            if url.path == "/dns":
+                return self._send(200, dns_lookup(q.get("name", "")))
+            if url.path == "/tcp":
+                return self._send(200, tcp_connect_test(self.config, q.get("host", ""), int(q.get("port", 0))))
+            if url.path == "/udp":
+                return self._send(200, udp_echo_test(self.config, q.get("host", ""), int(q.get("port", 0)), int(q.get("count", 10))))
+            if url.path == "/arp":
+                return self._send(200, read_arp())
+            return self._send(404, {"error": f"Unknown endpoint {url.path}"})
+        except PermissionError as exc:
+            return self._send(403, {"error": str(exc)})
+        except (ValueError, LookupError) as exc:
+            return self._send(400, {"error": str(exc)})
+        except Exception as exc:  # report, don't crash the server
+            return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+
+def make_server(port: int = DEFAULT_PORT, config: dict | None = None) -> ThreadingHTTPServer:
+    Handler.config = config or load_config()
+    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Req2Route localhost diagnostics helper")
+    ap.add_argument("--port", type=int, default=DEFAULT_PORT)
+    ap.add_argument("--config", help="path to config.json")
+    args = ap.parse_args()
+    server = make_server(args.port, load_config(args.config))
+    print(f"Req2Route helper listening on http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
+    print(f"Approved test targets: {server.RequestHandlerClass.config['allowed_test_targets']}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

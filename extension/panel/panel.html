@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Req2Route</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <h1>Req2Route</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="observe">Observe &amp; Explain</button>
+      <button class="tab-btn" data-tab="experiment">Experiment</button>
+      <button class="tab-btn" data-tab="tests">Live tests</button>
+    </nav>
+    <button id="analyze" class="primary">Analyze this page</button>
+  </header>
+
+  <main>
+    <!-- OBSERVE + EXPLAIN -->
+    <section id="tab-observe" class="tab active">
+      <div id="mode-note" class="note hidden"></div>
+      <div id="summary" class="summary"></div>
+      <div class="split">
+        <div class="table-wrap">
+          <table id="requests">
+            <thead><tr><th>Method</th><th>Status</th><th>Host</th><th>Protocol</th><th>Server IP</th><th>Time</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="explain" class="explain"><p class="muted">Select a request to see its journey through each layer.</p></div>
+      </div>
+    </section>
+
+    <!-- EXPERIMENT -->
+    <section id="tab-experiment" class="tab">
+      <div class="card">
+        <h2>TCP congestion &amp; flow control <span class="badge simulated">Simulated</span></h2>
+        <form id="tcp-form" class="grid">
+          <label>Variant <select name="variant"><option value="reno">Reno</option><option value="tahoe">Tahoe</option></select></label>
+          <label>Rounds (RTTs) <input name="rounds" type="number" value="30" min="5" max="200"></label>
+          <label>Initial ssthresh <input name="ssthresh" type="number" value="16" min="2"></label>
+          <label>Receiver window (rwnd) <input name="rwnd" type="number" value="40" min="1"></label>
+          <label>Random loss % <input name="lossPct" type="number" value="0" min="0" max="50" step="0.1"></label>
+          <label>Scripted loss rounds <input name="lossRounds" placeholder="e.g. 12, 22:timeout"></label>
+          <label>RTT (ms) <input name="rttMs" type="number" value="100" min="1"></label>
+          <div class="actions">
+            <button type="submit" class="primary">Run</button>
+            <button type="button" id="tcp-baseline">Keep as baseline</button>
+          </div>
+        </form>
+        <svg id="tcp-chart" viewBox="0 0 700 260"></svg>
+        <div id="tcp-summary" class="kv"></div>
+      </div>
+
+      <div class="card">
+        <h2>Subnet / CIDR calculator <span class="badge simulated">Calculated</span></h2>
+        <form id="subnet-form" class="inline">
+          <input name="cidr" value="192.168.10.77/26" aria-label="CIDR">
+          <label>Split into /<input name="split" type="number" min="0" max="32" placeholder="28"></label>
+          <button type="submit" class="primary">Calculate</button>
+        </form>
+        <div id="subnet-out" class="kv"></div>
+      </div>
+
+      <div class="card">
+        <h2>ACL decision tester <span class="badge simulated">Simulated</span></h2>
+        <div class="two-col">
+          <textarea id="acl-rules" rows="7">permit tcp 10.0.0.0/8 any eq 443
+deny tcp any any eq 23
+permit udp any host 8.8.8.8 eq 53
+deny ip 192.168.50.0/24 any</textarea>
+          <form id="acl-form" class="grid small">
+            <label>Protocol <select name="proto"><option>tcp</option><option>udp</option><option>icmp</option></select></label>
+            <label>Source IP <input name="src" value="10.1.2.3"></label>
+            <label>Destination IP <input name="dst" value="142.250.181.67"></label>
+            <label>Destination port <input name="dstPort" type="number" value="443"></label>
+            <div class="actions"><button type="submit" class="primary">Evaluate</button></div>
+          </form>
+        </div>
+        <div id="acl-out"></div>
+      </div>
+    </section>
+
+    <!-- LIVE TESTS (python helper) -->
+    <section id="tab-tests" class="tab">
+      <div class="card">
+        <h2>Helper status <span class="badge tested">Tested</span></h2>
+        <p class="muted">Live tests need the local helper: <code>python helper/server.py</code>. TCP/UDP tests only run against the team-controlled endpoints listed in <code>helper/config.json</code>.</p>
+        <button id="helper-health">Check helper</button>
+        <pre id="helper-health-out"></pre>
+      </div>
+      <div class="card">
+        <h2>DNS lookup</h2>
+        <form id="dns-form" class="inline"><input name="name" value="example.com"><button class="primary">Resolve</button></form>
+        <pre id="dns-out"></pre>
+      </div>
+      <div class="card">
+        <h2>TCP connect / UDP echo</h2>
+        <form id="sock-form" class="inline">
+          <input name="host" value="127.0.0.1"><input name="port" type="number" value="9000">
+          <button class="primary" name="kind" value="tcp">TCP handshake test</button>
+          <button class="primary" name="kind" value="udp">UDP echo test</button>
+        </form>
+        <pre id="sock-out"></pre>
+      </div>
+      <div class="card">
+        <h2>ARP table (Data Link)</h2>
+        <button id="arp-btn" class="primary">Read local ARP cache</button>
+        <div id="arp-out"></div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+{
+  "allowed_test_targets": ["127.0.0.1", "localhost"],
+  "allowed_ports": [9000]
+}

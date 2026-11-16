@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Req2Route",
+  "version": "0.1.0",
+  "description": "Cross-layer browser network explorer: observe a page load, explain it layer by layer, and run what-if experiments.",
+  "devtools_page": "devtools/devtools.html",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "minimum_chrome_version": "116"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "req2route",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-layer browser network explorer & what-if lab (Chrome MV3 extension + Python helper)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:py": "python -m unittest discover -s helper/tests -v",
+    "test:all": "npm test && npm run test:py",
+    "helper": "python helper/server.py",
+    "echo": "python helper/echo_server.py"
+  },
+  "engines": { "node": ">=20" }
+}

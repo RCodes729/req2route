@@ -1,0 +1,3 @@
+# The helper runs on the Python standard library alone.
+# Optional: richer DNS answers (TTL, CNAME, MX, NS)
+dnspython>=2.6
