@@ -1,8 +1,13 @@
 // Network-layer sandbox: ACL first-match evaluation and NAT/PAT translation.
-import { contains, isIPv4, parseIPv4, classify } from './subnet.js';
+import { contains, isIPv4, parseIPv4, classify, maskToPrefix, toIPv4 } from './subnet.js';
 
 export const LABEL = 'Simulated';
-
+const PORT_NAMES = { ftp: 21, ssh: 22, telnet: 23, smtp: 25, domain: 53, www: 80, http: 80, pop3: 110, https: 443 };
+// Cisco wildcard mask -> prefix length (0.0.0.255 -> 24). Returns null if tok is not a valid wildcard.
+function wildcardToPrefix(tok) {
+  if (!tok || !isIPv4(tok)) return null;
+  try { return maskToPrefix(toIPv4(~parseIPv4(tok) >>> 0)); } catch { return null; }
+}
 function matchAddr(spec, ip) {
   if (!spec || spec === 'any') return true;
   if (spec.startsWith('host ')) return parseIPv4(spec.slice(5)) === parseIPv4(ip);
@@ -40,13 +45,25 @@ export function parseAclLine(line) {
     const t = tokens[i++];
     if (t === 'host') return `host ${tokens[i++]}`;
     if (t === 'any') return 'any';
-    if (t && (t.includes('/') || isIPv4(t))) return t;
+      if (t && t.includes('/')) return t;
+    if (t && isIPv4(t)) {
+      const prefix = wildcardToPrefix(tokens[i]);
+      if (prefix !== null) { i++; return `${t}/${prefix}`; }
+      return t;
+    }
     throw new Error(`Bad address "${t}" in: "${line}"`);
   };
+
+  const readPort = t => {
+    if (t in PORT_NAMES) return PORT_NAMES[t];
+    if (/^\d+$/.test(t) && Number(t) <= 65535) return Number(t);
+    throw new Error(`Bad port "${t}" in: "${line}"`);
+  };
+
   rule.src = readAddr();
   rule.dst = readAddr();
-  if (tokens[i] === 'eq') { rule.dstPort = Number(tokens[i + 1]); i += 2; }
-  else if (tokens[i] === 'range') { rule.dstPort = [Number(tokens[i + 1]), Number(tokens[i + 2])]; i += 3; }
+   if (tokens[i] === 'eq') { rule.dstPort = readPort(tokens[i + 1]); i += 2; }
+  else if (tokens[i] === 'range') { rule.dstPort = [readPort(tokens[i + 1]), readPort(tokens[i + 2])]; i += 3; }
   if (i < tokens.length) throw new Error(`Unexpected "${tokens.slice(i).join(' ')}" in: "${line}"`);
   return rule;
 }
@@ -88,7 +105,10 @@ export function natTranslate(flows, { publicIp = '203.0.113.10', startPort = 500
       table.push({ ...f, translated: false, note: 'Source already public — no translation' });
       continue;
     }
-    if (!seen.has(key)) seen.set(key, nextPort++);
+     if (!seen.has(key)) {
+      if (nextPort > 65535) throw new Error(`Out of public ports: PAT pool exhausted at ${publicIp}:65535`);
+      seen.set(key, nextPort++);
+    }
     table.push({
       ...f,
       translated: true,

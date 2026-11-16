@@ -47,3 +47,30 @@ test('PAT maps each private socket to a unique public port', () => {
   assert.equal(r.table[2].insideGlobal, '203.0.113.10:50000'); // same inside socket reuses mapping
   assert.equal(r.table[3].translated, false);
 });
+test('named ports map to numbers; unknown names are rejected', () => {
+  assert.equal(parseAclLine('permit tcp any any eq https').dstPort, 443);
+  assert.equal(parseAclLine('deny tcp any any eq telnet').dstPort, 23);
+  assert.throws(() => parseAclLine('permit tcp any any eq banana'), /port/i);
+  assert.throws(() => parseAclLine('permit tcp any any eq 70000'), /port/i);
+});
+
+test('Cisco wildcard masks work like CIDR', () => {
+  const rule = parseAclLine('permit ip 10.0.0.0 0.255.255.255 any');
+  assert.equal(evaluateAcl([rule], { proto: 'tcp', src: '10.9.8.7', dst: '1.1.1.1', dstPort: 80 }).action, 'permit');
+  assert.equal(evaluateAcl([rule], { proto: 'tcp', src: '11.0.0.1', dst: '1.1.1.1', dstPort: 80 }).implicit, true);
+  // the wildcard can also be used on the destination
+  const r2 = parseAclLine('deny tcp any 192.168.1.0 0.0.0.255 eq 22');
+  assert.equal(evaluateAcl([r2], { proto: 'tcp', src: '8.8.8.8', dst: '192.168.1.50', dstPort: 22 }).action, 'deny');
+});
+
+test('PAT never hands out a port above 65535', () => {
+  const flows = [0, 1, 2].map(i => ({ src: `192.168.1.${10 + i}`, srcPort: 5000, dst: '8.8.8.8', dstPort: 53 }));
+  assert.throws(() => natTranslate(flows, { startPort: 65535 }), /port/i);
+  assert.equal(natTranslate(flows.slice(0, 1), { startPort: 65535 }).table[0].insideGlobal, '203.0.113.10:65535');
+});
+
+test('two plain addresses are src and dst, not address + wildcard', () => {
+  const r = parseAclLine('deny ip 10.0.0.1 20.0.0.1');
+  assert.equal(r.src, '10.0.0.1');
+  assert.equal(r.dst, '20.0.0.1');
+});
