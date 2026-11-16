@@ -44,7 +44,8 @@ Every object returned by `lib/` carries a `label` field: `Observed`, `Tested` or
 ## Helper security model
 | Threat | Mitigation |
 |---|---|
-| A random website calls the helper | Requests with a non-`chrome-extension://` `Origin` get 403 |
+| A random website calls the helper with `fetch()` | Requests with a non-`chrome-extension://` `Origin` get 403 |
+| A website calls it with no `Origin` (`<img>`, `<script>`, `<iframe>`, a link) | Browsers label these `Sec-Fetch-Mode: no-cors` / `navigate`; the helper returns 403. The extension's own `fetch()` is `cors` mode and always sends its `chrome-extension://` Origin. Tools like curl send neither header and are allowed (they already run on your machine). |
 | DNS rebinding | `Host` header must be `127.0.0.1`, `localhost` or `::1` |
 | Using the tool to scan other people's hosts | TCP/UDP tests only run against `allowed_test_targets` + `allowed_ports` |
 | Command injection via hostnames | Strict hostname regex; `arp` is called with fixed arguments, never a shell |

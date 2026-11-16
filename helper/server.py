@@ -7,6 +7,7 @@ DNS record lookups, TCP handshake timing, UDP echo/loss tests and reading the AR
 Safety rules (keep these when extending the helper):
   * binds to 127.0.0.1 only;
   * accepts requests only from chrome-extension:// origins (or no Origin, e.g. curl);
+  * rejects browser no-cors / navigation requests (Sec-Fetch-Mode), which carry no Origin;
   * rejects requests whose Host header is not localhost (blocks DNS-rebinding);
   * TCP/UDP tests run only against targets listed in config.json.
 
@@ -76,18 +77,26 @@ def dns_lookup(name: str) -> dict:
 
         method = "dnspython"
         resolver = dns.resolver.Resolver()
+        resolver.lifetime = 2.0  # per query: keeps all five lookups well under the extension's 15 s timeout
+        address_ms: list[float] = []
         for rtype in ("A", "AAAA", "CNAME", "MX", "NS"):
+            q_started = time.perf_counter()
             try:
                 answer = resolver.resolve(name, rtype, raise_on_no_answer=False)
             except dns.resolver.NXDOMAIN as exc:
                 raise LookupError(f"{name} does not exist (NXDOMAIN)") from exc
             except (dns.resolver.NoNameservers, dns.resolver.LifetimeTimeout):
-                continue
-            if answer.rrset is None:
+                answer = None
+            if rtype in ("A", "AAAA"):
+                address_ms.append((time.perf_counter() - q_started) * 1000)
+            if answer is None or answer.rrset is None:
                 continue
             for r in answer:
                 records.append({"type": rtype, "value": r.to_text(), "ttl": answer.rrset.ttl})
         servers = list(resolver.nameservers)
+        # Browsers ask for A and AAAA in parallel, so the slower of the two is the figure
+        # comparable with the browser's own DNS time. CNAME/MX/NS are extra lessons, not timed.
+        lookup_ms = max(address_ms)
     except ImportError:
         method = "system resolver (getaddrinfo); install dnspython for TTL/CNAME/MX/NS"
         servers = []
@@ -95,6 +104,7 @@ def dns_lookup(name: str) -> dict:
             infos = socket.getaddrinfo(name, None, proto=socket.IPPROTO_TCP)
         except socket.gaierror as exc:
             raise LookupError(f"Could not resolve {name}: {exc}") from exc
+        lookup_ms = (time.perf_counter() - started) * 1000
         seen = set()
         for family, _, _, _, sockaddr in infos:
             ip = sockaddr[0]
@@ -106,7 +116,10 @@ def dns_lookup(name: str) -> dict:
         "name": name,
         "method": method,
         "resolvers": servers,
-        "timeMs": round((time.perf_counter() - started) * 1000, 2),
+        "timeMs": round(lookup_ms, 2),
+        "totalMs": round((time.perf_counter() - started) * 1000, 2),
+        "timeNote": "timeMs is the address (A/AAAA) lookup only, comparable with the browser's DNS time; "
+                    "totalMs includes every record type queried.",
         "records": records,
     }
 
@@ -150,6 +163,14 @@ def _read_name(msg: bytes, offset: int) -> tuple[str, int]:
 
 
 def parse_dns_response(msg: bytes) -> dict:
+    """Parse a DNS reply. Any malformed or truncated packet raises ValueError."""
+    try:
+        return _parse_dns_response(msg)
+    except (struct.error, IndexError) as exc:
+        raise ValueError(f"Malformed DNS response ({exc})") from exc
+
+
+def _parse_dns_response(msg: bytes) -> dict:
     if len(msg) < 12:
         raise ValueError("DNS response too short")
     txid, flags, qd, an, _ns, _ar = struct.unpack("!HHHHHH", msg[:12])
@@ -392,6 +413,10 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin and not origin.startswith("chrome-extension://"):
             return "Origin not allowed: only the Req2Route extension may call the helper"
+        # A web page can reach us without an Origin header via <img>/<script>/<iframe> or a
+        # navigation. Browsers label those with Sec-Fetch-Mode; the extension's fetch() is "cors".
+        if (self.headers.get("Sec-Fetch-Mode") or "").lower() in ("no-cors", "navigate", "nested-navigate"):
+            return "Browser request not allowed: use the Req2Route extension (or curl) to call the helper"
         host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
         if host not in ("127.0.0.1", "localhost", "::1"):
             return "Host header not allowed"

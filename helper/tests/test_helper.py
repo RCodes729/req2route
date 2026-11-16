@@ -131,6 +131,16 @@ class HttpApi(unittest.TestCase):
         code, body = self.get("/health", {"Origin": "https://evil.example"})
         self.assertEqual(code, 403)
 
+    def test_web_page_without_origin_blocked(self):
+        # <img src="http://127.0.0.1:8765/..."> on a website sends no Origin, only Sec-Fetch-Mode: no-cors
+        for mode in ("no-cors", "navigate"):
+            code, _ = self.get("/health", {"Sec-Fetch-Mode": mode})
+            self.assertEqual(code, 403, mode)
+
+    def test_extension_fetch_allowed(self):
+        code, _ = self.get("/health", {"Origin": "chrome-extension://abc", "Sec-Fetch-Mode": "cors"})
+        self.assertEqual(code, 200)
+
     def test_rebinding_host_blocked(self):
         code, _ = self.get("/health", {"Host": "attacker.example"})
         self.assertEqual(code, 403)
@@ -148,6 +158,8 @@ class HttpApi(unittest.TestCase):
         code, body = self.get("/dns?name=localhost")
         self.assertEqual(code, 200)
         self.assertTrue(body["records"])
+        # timeMs is the address lookup only, so it can never exceed the total
+        self.assertLessEqual(body["timeMs"], body["totalMs"])
 
 
 if __name__ == "__main__":
