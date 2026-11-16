@@ -24,15 +24,17 @@ function el(tag, attrs = {}, ...children) {
 }
 const $ = sel => document.querySelector(sel);
 const badge = label => el('span', { class: `badge ${label.toLowerCase()}` }, label);
-const kv = pairs => el('dl', { class: 'kv' }, pairs.filter(([, v]) => v !== null && v !== undefined && v !== '').flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, String(v))]));
+const kv = pairs => el('dl', { class: 'kv' }, pairs.filter(([, v]) => v !== null && v !== undefined && v !== '').flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v instanceof Node ? v : String(v))]));
 
-const table = (headers, rows) => el('table', { class: 'data' },
+// data-label lets narrow panels show each cell as "label  value" (see table.data in panel.css)
+// (tables with 3 or fewer columns fit a 360px panel as-is, so only wider ones stack).
+const table = (headers, rows) => el('table', { class: headers.length <= 3 ? 'data tight' : 'data' },
   el('thead', {}, el('tr', {}, headers.map(h => el('th', {}, h)))),
-  el('tbody', {}, rows.map(r => el('tr', {}, r.map(v => el('td', { title: String(v ?? '') }, v ?? ''))))));
+  el('tbody', {}, rows.map(r => el('tr', {}, r.map((v, i) => el('td', { 'data-label': headers[i] ?? '', title: v instanceof Node ? '' : String(v ?? '') }, v ?? ''))))));
 
 // ---------- tabs ----------
 document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-pressed', String(b === btn)); });
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === `tab-${btn.dataset.tab}`));
 }));
 
@@ -40,6 +42,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click
 // OBSERVE + EXPLAIN
 // =====================================================================
 const inDevtools = typeof chrome !== 'undefined' && chrome.devtools?.network;
+// Match the DevTools theme rather than the OS one (outside DevTools, CSS falls back to prefers-color-scheme).
+if (inDevtools && chrome.devtools.panels?.themeName) {
+  document.documentElement.dataset.theme = chrome.devtools.panels.themeName === 'dark' ? 'dark' : 'light';
+}
 let entries = [];
 
 function addEntry(entry) {
@@ -73,16 +79,15 @@ function renderRow(entry, idx) {
 
 function renderSummary() {
   const s = summarizePage(entries);
-  const stat = (label, value) => el('div', { class: 'stat' }, el('b', {}, value), label);
+  const stat = (label, value, cls = 'stat') => el('div', { class: cls }, el('b', {}, value), label);
   $('#summary').replaceChildren(
-    stat('requests', s.requests),
-    stat('hosts', s.uniqueHosts),
-    stat('server IPs', s.uniqueServerIps),
+    stat('Requests', s.requests),
+    stat('Hosts', s.uniqueHosts),
+    stat('Server IPs', s.uniqueServerIps),
     stat('DNS lookups', s.dnsLookups),
-    stat('new connections', s.newConnections),
-    stat('KB transferred', Math.round(s.bytesTransferred / 1024)),
-    stat('protocols', Object.entries(s.protocols).map(([k, v]) => `${k}×${v}`).join(' ') || '—'),
-    badge(s.label),
+    stat('Connections', s.newConnections),
+    stat('KB', Math.round(s.bytesTransferred / 1024)),
+    stat('Protocols', Object.entries(s.protocols).map(([k, v]) => `${k} ×${v}`).join('   ') || '—', 'stat wide'),
   );
   renderConnections();
 }
@@ -90,9 +95,9 @@ function renderSummary() {
 function renderConnections() {
   const groups = groupByConnection(entries);
   $('#connections').replaceChildren(groups.length ? table(
-    ['Connection', 'Transport', 'HTTP', 'Server IP', 'Hosts', 'Requests', 'Connect (TCP+TLS)', 'What it means'],
-    groups.map(g => [g.connectionId, g.transport, g.httpVersion, g.serverIp || '—', g.hosts.join(', '), g.requests, g.opened ? `${g.handshakeMs} ms` : 'reused / none', g.meaning]),
-  ) : el('p', { class: 'muted' }, 'No requests yet.'));
+    ['Connection', 'Transport', 'HTTP', 'Server IP', 'Hosts', 'Requests', 'Handshake', 'Meaning'],
+    groups.map(g => [g.connectionId, g.transport, g.httpVersion, g.serverIp || '—', g.hosts.join(', '), g.requests, g.opened ? `${g.handshakeMs} ms` : 'reused', g.meaning]),
+  ) : el('p', { class: 'empty' }, 'No requests yet.'));
 }
 
 const PHASE_COLORS = { browser: 'var(--browser)', application: 'var(--app)', transport: 'var(--transport)' };
@@ -100,13 +105,13 @@ const PHASE_COLORS = { browser: 'var(--browser)', application: 'var(--app)', tra
 function renderExplain(entry) {
   const x = explainEntry(entry);
   const total = x.timeline.reduce((s, p) => s + p.ms, 0) || 1;
-  const waterfall = el('div', { class: 'waterfall' }, x.timeline.map((p, i) =>
-    el('span', { title: `${p.phase}: ${p.ms} ms`, style: { width: `${(p.ms / total) * 100}%`, background: PHASE_COLORS[p.layer], opacity: 0.55 + (i % 3) * 0.15 } })));
+  const waterfall = el('div', { class: 'waterfall' }, x.timeline.map(p =>
+    el('span', { title: `${p.phase}: ${p.ms} ms`, style: { width: `${(p.ms / total) * 100}%`, background: PHASE_COLORS[p.layer] } })));
   const legend = el('div', { class: 'legend' }, x.timeline.map(p => el('span', {}, el('i', { style: { background: PHASE_COLORS[p.layer] } }), `${p.phase} ${p.ms} ms`)));
 
   $('#explain').replaceChildren(
-    el('h2', {}, 'Journey of this request ', badge(x.label)),
-    el('p', { class: 'muted' }, x.url),
+    el('h2', {}, 'Request journey', badge(x.label)),
+    el('p', { class: 'url' }, x.url),
     waterfall, legend,
     el('div', { class: 'layer application' },
       el('h3', {}, `Application layer: ${x.application.protocol} (${x.application.httpVersion}) + DNS`),
@@ -138,8 +143,8 @@ function renderExplain(entry) {
       el('p', { class: 'muted' }, x.link.note)),
     el('div', { class: 'layer compare' },
       el('h3', {}, 'Observed vs Tested'),
-      el('p', { class: 'muted' }, `Ask the helper to resolve ${x.host} now and compare with what the browser used.`),
-      el('button', { class: 'primary', onclick: () => runCompare(x) }, `Test ${x.host}`),
+      el('p', { class: 'muted' }, 'Resolve this host now and compare with what the browser used.'),
+      el('button', { onclick: () => runCompare(x) }, `Resolve ${x.host}`),
       el('div', { id: 'compare-out' })),
   );
 }
@@ -165,7 +170,7 @@ async function runCompare(x) {
 function resetObserve() {
   entries = [];
   $('#requests tbody').replaceChildren();
-  $('#explain').replaceChildren(el('p', { class: 'muted' }, 'Select a request to see its journey through each layer.'));
+  $('#explain').replaceChildren(el('p', { class: 'empty' }, 'Select a request to trace it through each layer.'));
   renderSummary();
 }
 
@@ -179,7 +184,7 @@ if (inDevtools) {
   });
 } else {
   const note = $('#mode-note');
-  note.textContent = 'Demo mode: not running inside DevTools, so sample data is shown. Load the extension in Chrome to observe real pages.';
+  note.textContent = 'Sample data. Open Req2Route in DevTools (F12) to inspect a real page.';
   note.classList.remove('hidden');
   $('#analyze').addEventListener('click', () => { resetObserve(); SAMPLE_ENTRIES.forEach(addEntry); });
   SAMPLE_ENTRIES.forEach(addEntry);
@@ -200,33 +205,46 @@ function parseLossRounds(text) {
   return out;
 }
 
+// Colours come from CSS custom properties so the charts follow the light/dark theme.
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+let tcpRunsDrawn = null;
+
 function drawTcpChart(svg, runs) {
-  const W = 700, H = 260, P = 30;
+  tcpRunsDrawn = runs;
+  // Draw at the element's real pixel width so 10px text stays 10px in a 360px panel and in a wide dock.
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width) || 700);
+  const H = W < 480 ? 200 : 240, PL = 32, PR = 12, PT = 20, PB = 24;
   const all = runs.flatMap(r => r.series);
   const maxRound = Math.max(...all.map(p => p.round));
   const maxY = Math.max(4, ...all.map(p => Math.max(p.cwnd, p.ssthresh)));
-  const x = r => P + ((r - 1) / Math.max(1, maxRound - 1)) * (W - 2 * P);
-  const y = v => H - P - (v / maxY) * (H - 2 * P);
+  const x = r => PL + ((r - 1) / Math.max(1, maxRound - 1)) * (W - PL - PR);
+  const y = v => H - PB - (v / maxY) * (H - PT - PB);
   const ns = 'http://www.w3.org/2000/svg';
-  const mk = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+  const mk = (tag, attrs, text) => { const n = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text !== undefined) n.textContent = text; return n; };
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.replaceChildren();
-  svg.append(mk('line', { x1: P, y1: H - P, x2: W - P, y2: H - P, stroke: 'currentColor', 'stroke-opacity': 0.3 }));
-  svg.append(mk('line', { x1: P, y1: P, x2: P, y2: H - P, stroke: 'currentColor', 'stroke-opacity': 0.3 }));
-  const label = (tx, ty, text, anchor = 'start') => { const t = mk('text', { x: tx, y: ty, 'font-size': 10, fill: 'currentColor', 'text-anchor': anchor }); t.textContent = text; svg.append(t); };
-  label(P, P - 8, `cwnd (segments), max ${maxY}`);
-  label(W - P, H - 8, `RTT round (1–${maxRound})`, 'end');
+  // quiet horizontal guides instead of a boxed frame
+  for (const v of [0, Math.round(maxY / 2), maxY]) {
+    svg.append(mk('line', { x1: PL, y1: y(v), x2: W - PR, y2: y(v), stroke: 'currentColor', 'stroke-opacity': v === 0 ? 0.25 : 0.08 }));
+    svg.append(mk('text', { x: PL - 6, y: y(v) + 3, 'font-size': 10, fill: 'currentColor', 'fill-opacity': 0.6, 'text-anchor': 'end' }, v));
+  }
+  svg.append(mk('text', { x: PL, y: 12, 'font-size': 10, fill: 'currentColor', 'fill-opacity': 0.6 }, 'cwnd (segments)'));
+  svg.append(mk('text', { x: W - PR, y: H - 6, 'font-size': 10, fill: 'currentColor', 'fill-opacity': 0.6, 'text-anchor': 'end' }, `RTT round 1–${maxRound}`));
 
-  runs.forEach((run, i) => {
-    const dashed = run === tcpBaseline;
-    const color = dashed ? '#6b7280' : '#b18cff';
-    svg.append(mk('polyline', { points: run.series.map(p => `${x(p.round)},${y(p.cwnd)}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': dashed ? '5 4' : '' }));
-    if (!dashed) {
-      svg.append(mk('polyline', { points: run.series.map(p => `${x(p.round)},${y(p.ssthresh)}`).join(' '), fill: 'none', stroke: '#ff6bb5', 'stroke-width': 1, 'stroke-dasharray': '2 3' }));
-      run.series.filter(p => p.event).forEach(p => svg.append(mk('circle', { cx: x(p.round), cy: y(p.cwnd), r: 4, fill: p.event === 'timeout' ? '#ff5c5c' : '#ffc53d' })));
+  runs.forEach(run => {
+    const isBaseline = run === tcpBaseline && runs.length > 1;
+    svg.append(mk('polyline', {
+      points: run.series.map(p => `${x(p.round)},${y(p.cwnd)}`).join(' '), fill: 'none', stroke: 'currentColor',
+      'stroke-width': isBaseline ? 1.25 : 1.75, 'stroke-opacity': isBaseline ? 0.35 : 1, 'stroke-dasharray': isBaseline ? '4 4' : '', 'stroke-linejoin': 'round',
+    }));
+    if (!isBaseline) {
+      svg.append(mk('polyline', { points: run.series.map(p => `${x(p.round)},${y(p.ssthresh)}`).join(' '), fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.4, 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+      run.series.filter(p => p.event).forEach(p => svg.append(mk('circle', { cx: x(p.round), cy: y(p.cwnd), r: 3.5, fill: cssVar(p.event === 'timeout' ? '--chart-loss' : '--chart-warn') })));
     }
   });
-  label(W - P, P - 8, `${tcpBaseline ? 'grey dashed = baseline · ' : ''}pink dotted = ssthresh · dots = loss`, 'end');
 }
+// Redraw at the new width when the panel is resized or the tab first becomes visible.
+new ResizeObserver(() => { if (tcpRunsDrawn) drawTcpChart($('#tcp-chart'), tcpRunsDrawn); }).observe($('#tcp-chart'));
 
 $('#tcp-form').addEventListener('submit', ev => {
   ev.preventDefault();
@@ -243,13 +261,11 @@ $('#tcp-form').addEventListener('submit', ev => {
     });
     drawTcpChart($('#tcp-chart'), tcpBaseline ? [tcpBaseline, tcpLast] : [tcpLast]);
     const s = tcpLast.summary;
-    const cmp = tcpBaseline ? ` (baseline ${tcpBaseline.summary.avgThroughputKbps} kbps)` : '';
+    const cmp = tcpBaseline ? `  (baseline ${tcpBaseline.summary.avgThroughputKbps})` : '';
     $('#tcp-summary').replaceChildren(...kv([
-      ['Variant', tcpLast.variant.toUpperCase()],
-      ['Segments delivered', s.totalSegments],
+      ['Segments', s.totalSegments],
       ['Loss events', s.lossEvents],
-      ['Avg throughput', `${s.avgThroughputKbps} kbps${cmp}`],
-      ['Label', tcpLast.label],
+      ['Throughput', `${s.avgThroughputKbps} kbps avg${cmp}`],
     ]).children);
   } catch (e) {
     $('#tcp-summary').replaceChildren(el('span', { class: 'error' }, e.message));
@@ -301,9 +317,10 @@ $('#acl-form').addEventListener('submit', ev => {
     const rules = parseAcl($('#acl-rules').value);
     const r = evaluateAcl(rules, { proto: f.get('proto'), src: f.get('src'), dst: f.get('dst'), dstPort: Number(f.get('dstPort')) });
     out.replaceChildren(
-      el('div', { class: `verdict ${r.action}` }, `${r.action.toUpperCase()} — ${r.implicit ? 'no rule matched, implicit deny' : `matched rule ${r.matchedIndex + 1}`} `, badge(r.label)),
+      el('div', { class: `verdict ${r.action}` }, r.action === 'permit' ? 'Permit' : 'Deny',
+        el('span', { class: 'muted' }, r.implicit ? 'no rule matched (implicit deny)' : `rule ${r.matchedIndex + 1}`)),
       ...r.trace.map(t => el('div', { class: `trace-row${t.matched ? ' hit' : ''}` },
-        `${t.index + 1}. ${t.rule}  →  ${t.matched ? 'MATCH' : 'no match: ' + Object.entries(t.checks).filter(([, ok]) => !ok).map(([k]) => k).join(', ')}`)),
+        `${t.index + 1}  ${t.rule}  ${t.matched ? '→ match' : `· ${Object.entries(t.checks).filter(([, ok]) => !ok).map(([k]) => k).join(', ')} differs`}`)),
     );
   } catch (e) {
     out.replaceChildren(el('span', { class: 'error' }, e.message));
@@ -313,32 +330,52 @@ $('#acl-form').addEventListener('submit', ev => {
 // =====================================================================
 // LIVE TESTS
 // =====================================================================
-async function show(target, fn) {
+// Run a helper call into an output slot: a quiet "running" line, then a rendered result or the error.
+async function run(target, call, render, busy = 'Running…') {
   const out = $(target);
-  out.textContent = 'Running…';
-  try { out.textContent = JSON.stringify(await fn(), null, 2); }
-  catch (e) { out.textContent = e.message; }
+  out.replaceChildren(el('p', { class: 'muted' }, busy));
+  try { out.replaceChildren(...[].concat(render(await call()))); }
+  catch (e) { out.replaceChildren(el('p', { class: 'error' }, e.message)); }
 }
-$('#helper-health').addEventListener('click', () => show('#helper-health-out', helper.health));
-$('#dns-form').addEventListener('submit', ev => { ev.preventDefault(); show('#dns-out', () => helper.dns(new FormData(ev.target).get('name'))); });
+
+$('#helper-health').addEventListener('click', () => run('#helper-health-out', helper.health, h => kv([
+  ['Status', el('span', { class: 'status' }, 'Running')],
+  ['Version', `${h.version} on ${h.os}`],
+  ['dnspython', h.dnspython ? 'installed (TTL, CNAME, MX, NS)' : 'not installed (A/AAAA only)'],
+  ['Test targets', `${h.allowedTargets.join(', ')} : ${h.allowedPorts.join(', ')}`],
+]), 'Checking…'));
+
+$('#dns-form').addEventListener('submit', ev => {
+  ev.preventDefault();
+  run('#dns-out', () => helper.dns(new FormData(ev.target).get('name')), d => [
+    kv([['Lookup', `${d.timeMs} ms`], ['Resolver', d.method.split(';')[0]]]),
+    table(['Type', 'Value', 'TTL'], d.records.map(r => [r.type, r.value, r.ttl ?? '—'])),
+  ], 'Resolving…');
+});
+
 $('#sock-form').addEventListener('submit', ev => {
   ev.preventDefault();
   const f = new FormData(ev.target);
-  const kind = ev.submitter?.value || 'tcp';
-  show('#sock-out', () => kind === 'udp' ? helper.udp(f.get('host'), f.get('port'), 10) : helper.tcp(f.get('host'), f.get('port')));
-});
-$('#arp-btn').addEventListener('click', async () => {
-  const out = $('#arp-out');
-  out.textContent = 'Reading…';
-  try {
-    const r = await helper.arp();
-    out.replaceChildren(el('table', {},
-      el('thead', {}, el('tr', {}, ['Interface', 'IP address', 'MAC address', 'Type', 'Note'].map(h => el('th', {}, h)))),
-      el('tbody', {}, r.entries.map(e => el('tr', {}, [e.interface, e.ip, e.mac, e.type, e.note || ''].map(v => el('td', {}, v ?? '')))))));
-  } catch (e) {
-    out.textContent = e.message;
+  if ((ev.submitter?.value || 'tcp') === 'udp') {
+    run('#sock-out', () => helper.udp(f.get('host'), f.get('port'), 10), u => kv([
+      ['Target', u.target],
+      ['Echoed', `${u.received} of ${u.sent}`],
+      ['Loss', `${u.lossPct}%`],
+      ['Avg RTT', u.avgRttMs !== null ? `${u.avgRttMs} ms` : '—'],
+      ['Note', u.note],
+    ]), 'Sending 10 datagrams…');
+  } else {
+    run('#sock-out', () => helper.tcp(f.get('host'), f.get('port')), t => [
+      kv([['Target', t.target], ['Handshakes', `${t.succeeded} of ${t.attempts}`], ['Average', t.avgHandshakeMs !== null ? `${t.avgHandshakeMs} ms` : '—']]),
+      table(['Local port', 'Handshake'], t.samples.map(s => s.ok ? [s.local, `${s.handshakeMs} ms`] : ['—', s.error])),
+    ], 'Connecting…');
   }
 });
+
+$('#arp-btn').addEventListener('click', () => run('#arp-out', helper.arp, r => [
+  el('p', { class: 'hint' }, `${r.count} entries from ${r.source}`),
+  table(['IP', 'MAC', 'Type', 'Note'], r.entries.map(e => [e.ip, e.mac, e.type, e.note || ''])),
+], 'Reading…'));
 
 // =====================================================================
 // EXPERIMENT: SLIDING WINDOW (GBN vs SR)
@@ -361,8 +398,11 @@ function drawSequence(svg, run, prefix, sharedMaxT) {
   const y = t => TOP + t * scale;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.replaceChildren();
+  const dataColor = 'currentColor';
+  const ackColor = cssVar('--chart-ack');
+  const lossColor = cssVar('--chart-loss');
   const defs = mk('defs', {});
-  for (const [id, color] of [['data', '#4da3ff'], ['ack', '#3ee089']]) {
+  for (const [id, color] of [['data', dataColor], ['ack', ackColor]]) {
     const m = mk('marker', { id: `${prefix}-${id}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' });
     m.append(mk('path', { d: 'M0,0 L10,5 L0,10 z', fill: color }));
     defs.append(m);
@@ -370,27 +410,28 @@ function drawSequence(svg, run, prefix, sharedMaxT) {
   svg.append(defs);
   svg.append(mk('text', { x: SX, y: 14, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: 'currentColor' }, 'Sender'));
   svg.append(mk('text', { x: RX, y: 14, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: 'currentColor' }, 'Receiver'));
-  for (const x of [SX, RX]) svg.append(mk('line', { x1: x, y1: TOP - 10, x2: x, y2: H - 5, stroke: 'currentColor', 'stroke-opacity': 0.35 }));
+  for (const x of [SX, RX]) svg.append(mk('line', { x1: x, y1: TOP - 10, x2: x, y2: H - 5, stroke: 'currentColor', 'stroke-opacity': 0.2 }));
 
   for (const s of run.segments) {
     const fromX = s.kind === 'data' ? SX : RX;
     const toX = s.kind === 'data' ? RX : SX;
-    const color = s.kind === 'data' ? '#4da3ff' : '#3ee089';
+    const color = s.kind === 'data' ? dataColor : ackColor;
     const y0 = y(s.t0);
     const y1 = y(s.t1);
     if (s.lost) {
       const mx = (fromX + toX) / 2;
       const my = (y0 + y1) / 2;
-      svg.append(mk('line', { x1: fromX, y1: y0, x2: mx, y2: my, stroke: color, 'stroke-width': 1.4, 'stroke-dasharray': s.retransmission ? '4 3' : '' }));
-      svg.append(mk('text', { x: mx, y: my + 4, 'text-anchor': 'middle', 'font-size': 13, fill: '#ff5c5c', 'font-weight': 700 }, '✕'));
+      svg.append(mk('line', { x1: fromX, y1: y0, x2: mx, y2: my, stroke: color, 'stroke-width': 1.25, 'stroke-dasharray': s.retransmission ? '4 3' : '' }));
+      // crisp drawn cross instead of a text glyph
+      svg.append(mk('path', { d: `M${mx - 4},${my - 4}L${mx + 4},${my + 4}M${mx + 4},${my - 4}L${mx - 4},${my + 4}`, stroke: lossColor, 'stroke-width': 1.75, 'stroke-linecap': 'round' }));
     } else {
-      svg.append(mk('line', { x1: fromX, y1: y0, x2: toX, y2: y1, stroke: color, 'stroke-width': 1.4, 'stroke-dasharray': s.retransmission ? '4 3' : '', 'marker-end': `url(#${prefix}-${s.kind})` }));
+      svg.append(mk('line', { x1: fromX, y1: y0, x2: toX, y2: y1, stroke: color, 'stroke-width': 1.25, 'stroke-dasharray': s.retransmission ? '4 3' : '', 'marker-end': `url(#${prefix}-${s.kind})` }));
     }
     const lx = s.kind === 'data' ? SX - 6 : RX + 6;
     svg.append(mk('text', { x: lx, y: y0 + 3, 'text-anchor': s.kind === 'data' ? 'end' : 'start', 'font-size': 9, fill: color }, s.kind === 'data' ? `P${s.seq}` : `A${s.seq}`));
   }
   for (const l of run.log.filter(l => l.text.startsWith('Timeout'))) {
-    svg.append(mk('text', { x: SX + 4, y: y(l.time) - 2, 'font-size': 9, fill: '#ffc53d' }, '⏱ timeout'));
+    svg.append(mk('text', { x: SX + 4, y: y(l.time) - 3, 'font-size': 9, fill: cssVar('--chart-warn') }, 'timeout'));
   }
 }
 
@@ -419,10 +460,9 @@ $('#win-form').addEventListener('submit', ev => {
       if (run instanceof Error) throw run;
       drawSequence($(`#${protocol}-chart`), run, protocol, sharedMaxT);
       out.replaceChildren(kv([
-        ['Transmissions', run.summary.transmissions],
-        ['Retransmissions', run.summary.retransmissions],
-        ['Finished at tick', run.summary.completionTime ?? 'did not finish'],
-        ['Efficiency', `${run.summary.efficiencyPct}% of sends were useful`],
+        ['Sent', `${run.summary.transmissions} (${run.summary.retransmissions} resent)`],
+        ['Done at', run.summary.completionTime !== null ? `tick ${run.summary.completionTime}` : 'did not finish'],
+        ['Useful', `${run.summary.efficiencyPct}%`],
       ]));
     } catch (e) {
       out.replaceChildren(el('span', { class: 'error' }, e.message));
@@ -430,7 +470,7 @@ $('#win-form').addEventListener('submit', ev => {
   }
   const timeoutTicks = opts.timeout;
   if (timeoutTicks <= 2 * opts.delay) {
-    $('#sr-summary').append(el('p', { class: 'error' }, `Timeout (${timeoutTicks}) ≤ RTT (${2 * opts.delay}): packets will be resent before their ACK can arrive.`));
+    $('#sr-summary').append(el('p', { class: 'error' }, `Timeout ${timeoutTicks} ≤ RTT ${2 * opts.delay}: packets resend before their ACK arrives.`));
   }
 });
 $('#win-form').requestSubmit();
@@ -463,13 +503,13 @@ function renderWhatIf() {
   $('#whatif-out').replaceChildren(
     el('div', { class: 'meter' }, el('span', { style: { width: `${util}%` } })),
     kv([
-      ['Estimated TCP throughput', `${fmtBps(now)} (${util}% of the link)`],
+      ['Throughput', `${fmtBps(now)} · ${util}% of link`],
       ['Limited by', limitedBy],
-      ['Bandwidth-delay product', `${Math.round(bdp.bytes / 1024)} KB ≈ ${bdp.segments1460} segments must be in flight to fill the link`],
-      ['If RTT doubles', fmtBps(tput(rtt * 2, loss))],
-      ['If loss doubles', fmtBps(tput(rtt, Math.min(loss * 2, 0.99)))],
-      ['If loss halves', fmtBps(tput(rtt, loss / 2))],
-      ['Model', 'Mathis et al.: throughput ≈ (MSS / RTT) × 1.22 / √loss, capped at link speed'],
+      ['BDP', `${Math.round(bdp.bytes / 1024)} KB · ${bdp.segments1460} segments in flight to fill the link`],
+      ['RTT ×2', fmtBps(tput(rtt * 2, loss))],
+      ['Loss ×2', fmtBps(tput(rtt, Math.min(loss * 2, 0.99)))],
+      ['Loss ÷2', fmtBps(tput(rtt, loss / 2))],
+      ['Model', 'Mathis: (MSS / RTT) × 1.22 / √loss, capped at link speed'],
     ]),
   );
 }
@@ -485,9 +525,9 @@ $('#vlsm-form').addEventListener('submit', ev => {
   try {
     const plan = planVlsm(new FormData(ev.target).get('base'), parseRequirements($('#vlsm-reqs').value));
     out.replaceChildren(
-      table(['Subnet', 'Hosts needed', 'Network', 'Mask', 'Usable range', 'Broadcast', 'Usable', 'Unused'],
+      table(['Subnet', 'Hosts', 'Network', 'Mask', 'Usable range', 'Broadcast', 'Usable', 'Unused'],
         plan.allocations.map(a => [a.name, a.requestedHosts, `${a.network}/${a.prefix}`, a.mask, `${a.firstHost} – ${a.lastHost}`, a.broadcast, a.hostCount, a.wasted])),
-      el('p', { class: 'muted' }, `Allocated largest first. ${plan.usedAddresses} of ${plan.usedAddresses + plan.freeAddresses} addresses used${plan.nextFree ? `; next free address ${plan.nextFree}` : '; block is full'}.`),
+      el('p', { class: 'hint' }, `Largest first. ${plan.usedAddresses} of ${plan.usedAddresses + plan.freeAddresses} used${plan.nextFree ? ` · next free ${plan.nextFree}` : ' · block full'}`),
     );
   } catch (e) {
     out.replaceChildren(el('p', { class: 'error' }, e.message));
@@ -513,9 +553,9 @@ $('#nat-form').addEventListener('submit', ev => {
   try {
     const r = natTranslate(parseFlows($('#nat-flows').value), { publicIp: f.get('publicIp'), startPort: Number(f.get('startPort')) });
     out.replaceChildren(
-      table(['Inside local (private)', 'Inside global (after NAT)', 'Outside (server)', 'Translated?'],
+      table(['Inside local', 'Inside global', 'Outside', 'NAT'],
         r.table.map(t => [t.insideLocal || `${t.src}:${t.srcPort}`, t.insideGlobal || '—', t.outside || `${t.dst}:${t.dstPort}`, t.translated ? 'yes' : t.note])),
-      el('p', { class: 'muted' }, `Every private socket gets its own public port on ${r.publicIp}. Replies come back to that port and the router uses this table to forward them inside. The same inside socket reuses its mapping.`),
+      el('p', { class: 'hint' }, `Each private socket gets one public port on ${r.publicIp}; replies to that port are forwarded back inside.`),
     );
   } catch (e) {
     out.replaceChildren(el('p', { class: 'error' }, e.message));
@@ -534,16 +574,14 @@ $('#resolvers-form').addEventListener('submit', async ev => {
   try {
     const r = await helper.resolvers(new FormData(ev.target).get('name'));
     out.replaceChildren(
-      table(['Resolver', 'Server', 'Time', 'Answers', 'Packet sizes'],
+      table(['Resolver', 'Time', 'Answers', 'Bytes'],
         r.results.map(x => [
-          x.resolver + (x.resolver === r.fastest ? ' ⚡' : ''),
-          x.server,
+          el('span', {}, x.resolver.replace(' (your OS / router)', ''), x.resolver === r.fastest ? el('span', { class: 'tag' }, 'Fastest') : null),
           x.ok ? `${x.timeMs} ms` : 'failed',
           !x.ok ? x.error
-            : (x.answers || []).map(a => `${a.type} ${a.value} (TTL ${a.ttl})`).join('; ') || x.addresses.join(', ') || `no answers${x.rcode ? ` (${x.rcode})` : ''}`,
-          x.bytesSent ? `${x.bytesSent} B query / ${x.bytesReceived} B reply` : '',
+            : (x.answers || []).map(a => `${a.type} ${a.value} · TTL ${a.ttl}`).join('\n') || x.addresses.join(', ') || `no answers${x.rcode ? ` (${x.rcode})` : ''}`,
+          x.bytesSent ? `${x.bytesSent} → ${x.bytesReceived}` : '—',
         ])),
-      el('p', { class: 'muted' }, r.note),
     );
   } catch (e) {
     out.replaceChildren(el('p', { class: 'error' }, e.message));

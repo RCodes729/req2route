@@ -2,29 +2,40 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Req2Route</title>
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
-  <svg class="bg-wire" viewBox="-50 -50 100 100" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="0.25"><ellipse rx="46" ry="18" transform="rotate(0)"/><ellipse rx="46" ry="18" transform="rotate(5)"/><ellipse rx="46" ry="18" transform="rotate(10)"/><ellipse rx="46" ry="18" transform="rotate(15)"/><ellipse rx="46" ry="18" transform="rotate(20)"/><ellipse rx="46" ry="18" transform="rotate(25)"/><ellipse rx="46" ry="18" transform="rotate(30)"/><ellipse rx="46" ry="18" transform="rotate(35)"/><ellipse rx="46" ry="18" transform="rotate(40)"/><ellipse rx="46" ry="18" transform="rotate(45)"/><ellipse rx="46" ry="18" transform="rotate(50)"/><ellipse rx="46" ry="18" transform="rotate(55)"/><ellipse rx="46" ry="18" transform="rotate(60)"/><ellipse rx="46" ry="18" transform="rotate(65)"/><ellipse rx="46" ry="18" transform="rotate(70)"/><ellipse rx="46" ry="18" transform="rotate(75)"/><ellipse rx="46" ry="18" transform="rotate(80)"/><ellipse rx="46" ry="18" transform="rotate(85)"/><ellipse rx="46" ry="18" transform="rotate(90)"/><ellipse rx="46" ry="18" transform="rotate(95)"/><ellipse rx="46" ry="18" transform="rotate(100)"/><ellipse rx="46" ry="18" transform="rotate(105)"/><ellipse rx="46" ry="18" transform="rotate(110)"/><ellipse rx="46" ry="18" transform="rotate(115)"/><ellipse rx="46" ry="18" transform="rotate(120)"/><ellipse rx="46" ry="18" transform="rotate(125)"/><ellipse rx="46" ry="18" transform="rotate(130)"/><ellipse rx="46" ry="18" transform="rotate(135)"/><ellipse rx="46" ry="18" transform="rotate(140)"/><ellipse rx="46" ry="18" transform="rotate(145)"/><ellipse rx="46" ry="18" transform="rotate(150)"/><ellipse rx="46" ry="18" transform="rotate(155)"/><ellipse rx="46" ry="18" transform="rotate(160)"/><ellipse rx="46" ry="18" transform="rotate(165)"/><ellipse rx="46" ry="18" transform="rotate(170)"/><ellipse rx="46" ry="18" transform="rotate(175)"/><ellipse rx="30" ry="10.5" transform="rotate(0)"/><ellipse rx="30" ry="10.5" transform="rotate(10)"/><ellipse rx="30" ry="10.5" transform="rotate(20)"/><ellipse rx="30" ry="10.5" transform="rotate(30)"/><ellipse rx="30" ry="10.5" transform="rotate(40)"/><ellipse rx="30" ry="10.5" transform="rotate(50)"/><ellipse rx="30" ry="10.5" transform="rotate(60)"/><ellipse rx="30" ry="10.5" transform="rotate(70)"/><ellipse rx="30" ry="10.5" transform="rotate(80)"/><ellipse rx="30" ry="10.5" transform="rotate(90)"/><ellipse rx="30" ry="10.5" transform="rotate(100)"/><ellipse rx="30" ry="10.5" transform="rotate(110)"/><ellipse rx="30" ry="10.5" transform="rotate(120)"/><ellipse rx="30" ry="10.5" transform="rotate(130)"/><ellipse rx="30" ry="10.5" transform="rotate(140)"/><ellipse rx="30" ry="10.5" transform="rotate(150)"/><ellipse rx="30" ry="10.5" transform="rotate(160)"/><ellipse rx="30" ry="10.5" transform="rotate(170)"/></g></svg>
+  <!-- Icons: Lucide (ISC licence), 24px grid, 1.75px stroke. Defined once, used via <use>. -->
+  <svg class="sprite" aria-hidden="true">
+    <defs>
+      <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+      <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></symbol>
+      <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></symbol>
+      <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+    </defs>
+  </svg>
+
   <header>
-    <div class="brand">
-      <span class="logo" aria-hidden="true"><svg viewBox="-50 -50 100 100"><g fill="none" stroke="currentColor" stroke-width="1.6"><ellipse rx="44" ry="15" transform="rotate(0)"/><ellipse rx="44" ry="15" transform="rotate(15)"/><ellipse rx="44" ry="15" transform="rotate(30)"/><ellipse rx="44" ry="15" transform="rotate(45)"/><ellipse rx="44" ry="15" transform="rotate(60)"/><ellipse rx="44" ry="15" transform="rotate(75)"/><ellipse rx="44" ry="15" transform="rotate(90)"/><ellipse rx="44" ry="15" transform="rotate(105)"/><ellipse rx="44" ry="15" transform="rotate(120)"/><ellipse rx="44" ry="15" transform="rotate(135)"/><ellipse rx="44" ry="15" transform="rotate(150)"/><ellipse rx="44" ry="15" transform="rotate(165)"/></g></svg></span>
-      <h1>Req2Route<small>request → route</small></h1>
-    </div>
-    <nav>
-      <button class="tab-btn active" data-tab="observe">Observe &amp; Explain</button>
-      <button class="tab-btn" data-tab="experiment">Experiment</button>
-      <button class="tab-btn" data-tab="tests">Live tests</button>
+    <div class="brand"><svg class="i"><use href="#i-route"/></svg><span>Req2Route</span></div>
+    <nav class="segmented" aria-label="Views">
+      <button class="tab-btn active" data-tab="observe"><svg class="i"><use href="#i-activity"/></svg><span>Observe</span></button>
+      <button class="tab-btn" data-tab="experiment"><svg class="i"><use href="#i-flask"/></svg><span>Experiment</span></button>
+      <button class="tab-btn" data-tab="tests"><svg class="i"><use href="#i-server"/></svg><span>Live</span></button>
     </nav>
-    <button id="analyze" class="primary">Analyze this page</button>
   </header>
 
   <main>
-    <!-- OBSERVE + EXPLAIN -->
+    <!-- OBSERVE -->
     <section id="tab-observe" class="tab active">
-      <div id="mode-note" class="note hidden"></div>
-      <div id="summary" class="summary"></div>
+      <div class="toolbar">
+        <h2>This page <span class="badge observed">Observed</span></h2>
+        <button id="analyze" class="primary"><svg class="i"><use href="#i-rotate"/></svg>Analyze</button>
+      </div>
+      <p id="mode-note" class="note hidden"></p>
+      <div id="summary" class="stats"></div>
       <div class="split">
         <div class="table-wrap">
           <table id="requests">
@@ -32,167 +43,172 @@
             <tbody></tbody>
           </table>
         </div>
-        <div id="explain" class="explain"><p class="muted">Select a request to see its journey through each layer.</p></div>
+        <div id="explain" class="explain"><p class="empty">Select a request to trace it through each layer.</p></div>
       </div>
-      <details class="card" id="connections-card" open>
-        <summary><h2>Connections <span class="badge observed">Observed</span></h2></summary>
-        <p class="muted">Each row is one TCP or QUIC connection. Many requests on one connection means one handshake was shared (keep-alive or HTTP/2/3 multiplexing).</p>
+      <section class="panel">
+        <div class="section-head"><h2>Connections <span class="badge observed">Observed</span></h2></div>
+        <p class="hint">Several requests on one connection share a single handshake.</p>
         <div id="connections"></div>
-      </details>
+      </section>
     </section>
 
     <!-- EXPERIMENT -->
     <section id="tab-experiment" class="tab">
-      <nav class="jump">Jump to:
-        <a href="#card-tcp">TCP congestion</a> <a href="#card-window">Sliding window</a> <a href="#card-whatif">What-if throughput</a>
-        <a href="#card-subnet">Subnet</a> <a href="#card-vlsm">VLSM</a> <a href="#card-acl">ACL</a> <a href="#card-nat">NAT/PAT</a>
+      <nav class="jump" aria-label="Sections">
+        <a href="#card-tcp">TCP</a><a href="#card-window">GBN / SR</a><a href="#card-whatif">Throughput</a>
+        <a href="#card-subnet">Subnet</a><a href="#card-vlsm">VLSM</a><a href="#card-acl">ACL</a><a href="#card-nat">NAT</a>
       </nav>
-      <h2 class="layer-title">Transport layer</h2>
-      <div class="card" id="card-tcp">
-        <h2>TCP congestion &amp; flow control <span class="badge simulated">Simulated</span></h2>
+
+      <h3 class="group-label">Transport</h3>
+      <section class="panel" id="card-tcp">
+        <div class="section-head"><h2>TCP congestion control <span class="badge simulated">Simulated</span></h2></div>
         <form id="tcp-form" class="grid">
           <label>Variant <select name="variant"><option value="reno">Reno</option><option value="tahoe">Tahoe</option></select></label>
-          <label>Rounds (RTTs) <input name="rounds" type="number" value="30" min="5" max="200"></label>
-          <label>Initial ssthresh <input name="ssthresh" type="number" value="16" min="2"></label>
-          <label>Receiver window (rwnd) <input name="rwnd" type="number" value="40" min="1"></label>
-          <label>Random loss % <input name="lossPct" type="number" value="0" min="0" max="50" step="0.1"></label>
-          <label>Scripted loss rounds <input name="lossRounds" placeholder="e.g. 12, 22:timeout"></label>
+          <label>Rounds <input name="rounds" type="number" value="30" min="5" max="200"></label>
+          <label>ssthresh <input name="ssthresh" type="number" value="16" min="2"></label>
+          <label>rwnd <input name="rwnd" type="number" value="40" min="1"></label>
+          <label>Loss % <input name="lossPct" type="number" value="0" min="0" max="50" step="0.1"></label>
           <label>RTT (ms) <input name="rttMs" type="number" value="100" min="1"></label>
+          <label class="wide">Loss at rounds <input name="lossRounds" placeholder="12, 22:timeout"></label>
           <div class="actions">
-            <button type="submit" class="primary">Run</button>
-            <button type="button" id="tcp-baseline">Keep as baseline</button>
+            <button type="submit">Run</button>
+            <button type="button" id="tcp-baseline" class="ghost">Set baseline</button>
           </div>
         </form>
-        <svg id="tcp-chart" viewBox="0 0 700 260"></svg>
+        <svg id="tcp-chart" viewBox="0 0 700 220" role="img" aria-label="Congestion window per RTT round"></svg>
+        <ul class="legend-row">
+          <li><i class="sw line"></i>cwnd</li><li><i class="sw dashed"></i>ssthresh</li>
+          <li><i class="sw dot warn"></i>3 dup ACKs</li><li><i class="sw dot loss"></i>timeout</li>
+        </ul>
         <div id="tcp-summary" class="kv"></div>
-      </div>
+      </section>
 
-      <div class="card" id="card-window">
-        <h2>Sliding window: Go-Back-N vs Selective Repeat <span class="badge simulated">Simulated</span></h2>
+      <section class="panel" id="card-window">
+        <div class="section-head"><h2>Go-Back-N vs Selective Repeat <span class="badge simulated">Simulated</span></h2></div>
         <form id="win-form" class="grid">
           <label>Packets <input name="packets" type="number" value="8" min="1" max="30"></label>
-          <label>Window size <input name="window" type="number" value="4" min="1" max="16"></label>
-          <label>One-way delay (ticks) <input name="delay" type="number" value="5" min="1" max="20"></label>
+          <label>Window <input name="window" type="number" value="4" min="1" max="16"></label>
+          <label>Delay (ticks) <input name="delay" type="number" value="5" min="1" max="20"></label>
           <label>Timeout (ticks) <input name="timeout" type="number" value="14" min="2" max="80"></label>
-          <label>Lost packets <input name="lostPackets" value="2" placeholder="e.g. 2, 5"></label>
-          <label>Lost ACKs <input name="lostAcks" value="" placeholder="e.g. 4"></label>
-          <div class="actions"><button type="submit" class="primary">Compare</button></div>
+          <label>Lost packets <input name="lostPackets" value="2" placeholder="2, 5"></label>
+          <label>Lost ACKs <input name="lostAcks" value="" placeholder="4"></label>
+          <div class="actions"><button type="submit">Compare</button></div>
         </form>
+        <ul class="legend-row">
+          <li><i class="sw line"></i>data</li><li><i class="sw line ack"></i>ACK</li>
+          <li><i class="sw x"></i>lost</li><li><i class="sw dashed"></i>retransmit</li>
+        </ul>
         <div class="two-col">
-          <div><h3 id="gbn-title">Go-Back-N</h3><svg id="gbn-chart" class="seq"></svg><div id="gbn-summary"></div></div>
-          <div><h3 id="sr-title">Selective Repeat</h3><svg id="sr-chart" class="seq"></svg><div id="sr-summary"></div></div>
+          <div><h3 id="gbn-title">Go-Back-N</h3><svg id="gbn-chart" class="seq" role="img" aria-label="Go-Back-N sequence diagram"></svg><div id="gbn-summary"></div></div>
+          <div><h3 id="sr-title">Selective Repeat</h3><svg id="sr-chart" class="seq" role="img" aria-label="Selective Repeat sequence diagram"></svg><div id="sr-summary"></div></div>
         </div>
-        <p class="muted">Blue arrows are data packets, green are ACKs, red ✕ is a loss in the channel, dashed blue is a retransmission. Time runs downward.</p>
-      </div>
+      </section>
 
-      <div class="card" id="card-whatif">
-        <h2>What-if: delay and loss vs throughput <span class="badge simulated">Simulated</span></h2>
+      <section class="panel" id="card-whatif">
+        <div class="section-head"><h2>Throughput what-if <span class="badge simulated">Simulated</span></h2></div>
         <form id="whatif-form" class="grid">
-          <label><span>RTT: <output name="rttOut">80</output> ms</span> <input name="rtt" type="range" min="5" max="400" value="80"></label>
-          <label><span>Loss: <output name="lossOut">1</output> %</span> <input name="loss" type="range" min="0.01" max="10" step="0.01" value="1"></label>
-          <label><span>Link: <output name="bwOut">50</output> Mbps</span> <input name="bw" type="range" min="1" max="1000" value="50"></label>
+          <label><span>RTT <output name="rttOut">80</output> ms</span><input name="rtt" type="range" min="5" max="400" value="80"></label>
+          <label><span>Loss <output name="lossOut">1</output> %</span><input name="loss" type="range" min="0.01" max="10" step="0.01" value="1"></label>
+          <label><span>Link <output name="bwOut">50</output> Mbps</span><input name="bw" type="range" min="1" max="1000" value="50"></label>
           <label>MSS (bytes) <input name="mss" type="number" value="1460" min="500" max="9000"></label>
         </form>
         <div id="whatif-out"></div>
-      </div>
+      </section>
 
-      <h2 class="layer-title">Network layer</h2>
-      <div class="card" id="card-subnet">
-        <h2>Subnet / CIDR calculator <span class="badge calculated">Calculated</span></h2>
-        <form id="subnet-form" class="inline">
-          <input name="cidr" value="192.168.10.77/26" aria-label="CIDR">
-          <label>Split into /<input name="split" type="number" min="0" max="32" placeholder="28"></label>
-          <button type="submit" class="primary">Calculate</button>
+      <h3 class="group-label">Network</h3>
+      <section class="panel" id="card-subnet">
+        <div class="section-head"><h2>Subnet calculator <span class="badge calculated">Calculated</span></h2></div>
+        <form id="subnet-form" class="grid">
+          <label class="wide">Address <input name="cidr" value="192.168.10.77/26" class="mono"></label>
+          <label>Split into / <input name="split" type="number" min="0" max="32" placeholder="28"></label>
+          <div class="actions"><button type="submit">Calculate</button></div>
         </form>
         <div id="subnet-out" class="kv"></div>
-      </div>
+      </section>
 
-      <div class="card" id="card-vlsm">
-        <h2>VLSM planner <span class="badge calculated">Calculated</span></h2>
-        <div class="two-col">
-          <form id="vlsm-form" class="grid small">
-            <label>Address block <input name="base" value="192.168.1.0/24"></label>
-            <div class="actions"><button type="submit" class="primary">Plan subnets</button></div>
-          </form>
-          <label class="muted">One subnet per line: name and hosts needed
-            <textarea id="vlsm-reqs" rows="5">Sales 50
+      <section class="panel" id="card-vlsm">
+        <div class="section-head"><h2>VLSM planner <span class="badge calculated">Calculated</span></h2></div>
+        <form id="vlsm-form" class="grid">
+          <label class="wide">Block <input name="base" value="192.168.1.0/24" class="mono"></label>
+          <label class="full">Subnets <span class="sub">name and hosts, one per line</span>
+            <textarea id="vlsm-reqs" rows="4">Sales 50
 IT 25
 HR 10
 Router link 2</textarea></label>
-        </div>
+          <div class="actions"><button type="submit">Plan</button></div>
+        </form>
         <div id="vlsm-out"></div>
-      </div>
+      </section>
 
-      <div class="card" id="card-acl">
-        <h2>ACL decision tester <span class="badge simulated">Simulated</span></h2>
-        <div class="two-col">
-          <textarea id="acl-rules" rows="7">permit tcp 10.0.0.0/8 any eq 443
+      <section class="panel" id="card-acl">
+        <div class="section-head"><h2>ACL tester <span class="badge simulated">Simulated</span></h2></div>
+        <form id="acl-form" class="grid">
+          <label class="full">Rules <span class="sub">first match wins</span>
+            <textarea id="acl-rules" rows="5">permit tcp 10.0.0.0/8 any eq 443
 permit tcp 172.16.0.0 0.15.255.255 any eq https
 deny tcp any any eq telnet
 permit udp any host 8.8.8.8 eq 53
-deny ip 192.168.50.0/24 any</textarea>
-          <form id="acl-form" class="grid small">
-            <label>Protocol <select name="proto"><option>tcp</option><option>udp</option><option>icmp</option></select></label>
-            <label>Source IP <input name="src" value="10.1.2.3"></label>
-            <label>Destination IP <input name="dst" value="142.250.181.67"></label>
-            <label>Destination port <input name="dstPort" type="number" value="443"></label>
-            <div class="actions"><button type="submit" class="primary">Evaluate</button></div>
-          </form>
-        </div>
+deny ip 192.168.50.0/24 any</textarea></label>
+          <label>Protocol <select name="proto"><option>tcp</option><option>udp</option><option>icmp</option></select></label>
+          <label>Port <input name="dstPort" type="number" value="443"></label>
+          <label>Source <input name="src" value="10.1.2.3" class="mono"></label>
+          <label>Destination <input name="dst" value="142.250.181.67" class="mono"></label>
+          <div class="actions"><button type="submit">Evaluate</button></div>
+        </form>
         <div id="acl-out"></div>
-      </div>
+      </section>
 
-      <div class="card" id="card-nat">
-        <h2>NAT / PAT (overload) <span class="badge simulated">Simulated</span></h2>
-        <div class="two-col">
-          <label class="muted">Outbound flows: <code>source:port -&gt; destination:port</code>
-            <textarea id="nat-flows" rows="5">192.168.1.10:51000 -> 93.184.215.14:443
+      <section class="panel" id="card-nat">
+        <div class="section-head"><h2>NAT / PAT <span class="badge simulated">Simulated</span></h2></div>
+        <form id="nat-form" class="grid">
+          <label class="full">Flows <span class="sub">src:port -&gt; dst:port</span>
+            <textarea id="nat-flows" rows="4">192.168.1.10:51000 -> 93.184.215.14:443
 192.168.1.11:51000 -> 93.184.215.14:443
 192.168.1.10:51000 -> 8.8.8.8:53
 192.168.1.12:40000 -> 142.250.181.67:443</textarea></label>
-          <form id="nat-form" class="grid small">
-            <label>Router public IP <input name="publicIp" value="203.0.113.10"></label>
-            <label>First public port <input name="startPort" type="number" value="50000"></label>
-            <div class="actions"><button type="submit" class="primary">Translate</button></div>
-          </form>
-        </div>
+          <label>Public IP <input name="publicIp" value="203.0.113.10" class="mono"></label>
+          <label>First port <input name="startPort" type="number" value="50000"></label>
+          <div class="actions"><button type="submit">Translate</button></div>
+        </form>
         <div id="nat-out"></div>
-      </div>
+      </section>
     </section>
 
-    <!-- LIVE TESTS (python helper) -->
+    <!-- LIVE (python helper) -->
     <section id="tab-tests" class="tab">
-      <div class="card">
-        <h2>Helper status <span class="badge tested">Tested</span></h2>
-        <p class="muted">Live tests need the local helper: <code>python helper/server.py</code>. TCP/UDP tests only run against the team-controlled endpoints listed in <code>helper/config.json</code>.</p>
-        <button id="helper-health">Check helper</button>
-        <pre id="helper-health-out"></pre>
-      </div>
-      <div class="card">
-        <h2>DNS lookup <span class="badge tested">Tested</span></h2>
-        <form id="dns-form" class="inline"><input name="name" value="example.com"><button class="primary">Resolve</button></form>
-        <pre id="dns-out"></pre>
-      </div>
-      <div class="card">
-        <h2>Compare DNS resolvers <span class="badge tested">Tested</span></h2>
-        <p class="muted">Sends a hand-built DNS query (UDP port 53) to Cloudflare, Google and Quad9, and times your system resolver too.</p>
-        <form id="resolvers-form" class="inline"><input name="name" value="www.wikipedia.org"><button class="primary">Compare</button></form>
-        <div id="resolvers-out"></div>
-      </div>
-      <div class="card">
-        <h2>TCP connect / UDP echo <span class="badge tested">Tested</span></h2>
+      <section class="panel">
+        <div class="section-head">
+          <h2>Helper <span class="badge tested">Tested</span></h2>
+          <button id="helper-health" class="primary">Check helper</button>
+        </div>
+        <p class="hint">Start it with <code>helper\start-helper.bat</code>.</p>
+        <div id="helper-health-out" class="out"></div>
+      </section>
+      <section class="panel">
+        <div class="section-head"><h2>DNS lookup <span class="badge tested">Tested</span></h2></div>
+        <form id="dns-form" class="inline"><input name="name" value="example.com" class="mono" aria-label="Hostname"><button>Resolve</button></form>
+        <div id="dns-out" class="out"></div>
+      </section>
+      <section class="panel">
+        <div class="section-head"><h2>Resolvers <span class="badge tested">Tested</span></h2></div>
+        <p class="hint">Raw UDP/53 query to each public resolver, plus your system's.</p>
+        <form id="resolvers-form" class="inline"><input name="name" value="www.wikipedia.org" class="mono" aria-label="Hostname"><button>Compare</button></form>
+        <div id="resolvers-out" class="out"></div>
+      </section>
+      <section class="panel">
+        <div class="section-head"><h2>TCP / UDP <span class="badge tested">Tested</span></h2></div>
         <form id="sock-form" class="inline">
-          <input name="host" value="127.0.0.1"><input name="port" type="number" value="9000">
-          <button class="primary" name="kind" value="tcp">TCP handshake test</button>
-          <button class="primary" name="kind" value="udp">UDP echo test</button>
+          <input name="host" value="127.0.0.1" class="mono host" aria-label="Host">
+          <input name="port" type="number" value="9000" class="port" aria-label="Port">
+          <button name="kind" value="tcp">TCP handshake</button>
+          <button name="kind" value="udp">UDP echo</button>
         </form>
-        <pre id="sock-out"></pre>
-      </div>
-      <div class="card">
-        <h2>ARP table (Data Link) <span class="badge tested">Tested</span></h2>
-        <button id="arp-btn" class="primary">Read local ARP cache</button>
-        <div id="arp-out"></div>
-      </div>
+        <div id="sock-out" class="out"></div>
+      </section>
+      <section class="panel">
+        <div class="section-head"><h2>ARP cache <span class="badge tested">Tested</span></h2><button id="arp-btn">Read</button></div>
+        <div id="arp-out" class="out"></div>
+      </section>
     </section>
   </main>
 
