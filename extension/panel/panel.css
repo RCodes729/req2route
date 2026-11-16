@@ -58,6 +58,12 @@ tbody tr:hover, tbody tr.selected { background: color-mix(in srgb, var(--accent)
 .inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .actions { display: flex; gap: 6px; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* DevTools is often docked narrow: stack the request list above the explanation so no column is cut off. */
+@media (max-width: 900px) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .table-wrap, .explain { max-height: none; }
+  .table-wrap { max-height: 45vh; }
+}
 #tcp-chart { width: 100%; height: auto; max-height: 320px; margin-top: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow: auto; max-height: 300px; }
 .trace-row { font-family: ui-monospace, Consolas, monospace; padding: 2px 6px; }

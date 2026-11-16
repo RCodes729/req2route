@@ -50,7 +50,11 @@ function addEntry(entry) {
 
 function renderRow(entry, idx) {
   let host = '';
-  try { host = new URL(entry.request.url).hostname; } catch { host = entry.request.url.slice(0, 40); }
+  try {
+    const u = new URL(entry.request.url);
+    // data:/blob: URLs are built inside the page: no DNS, no connection, no server.
+    host = u.hostname || `${u.protocol} (inline, no network)`;
+  } catch { host = entry.request.url.slice(0, 40); }
   const row = el('tr', { 'data-idx': idx, title: entry.request.url },
     el('td', {}, entry.request.method),
     el('td', {}, entry.response?.status || '—'),
