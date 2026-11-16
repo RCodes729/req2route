@@ -3,7 +3,7 @@
 **A cross-layer browser network explorer and what-if lab.**
 Computer Networks semester project: a Chrome extension (Manifest V3) plus an optional Python helper.
 
-Open any website, press **Analyze this page**, and Req2Route shows how each request got to you, layer by layer:
+Open any website, press **Analyze**, and Req2Route shows how each request got to you, layer by layer:
 DNS and HTTP at the application layer, TCP/QUIC handshakes and connection reuse at the transport layer, server IPs and address types at the network layer, and your local ARP cache at the data link layer. Then change the conditions (loss, delay, window size, subnet or ACL rules) and see what would happen.
 
 > **Observe → Explain → Experiment.** Every result is labelled so a model is never mistaken for a real capture:
@@ -23,7 +23,7 @@ DNS and HTTP at the application layer, TCP/QUIC handshakes and connection reuse 
 1. Open `chrome://extensions`, then turn on **Developer mode**.
 2. Click **Load unpacked** and select the `extension/` folder.
 3. Open any site, press **F12**, and open the **Req2Route** tab in DevTools.
-4. Click **Analyze this page**. The page reloads and every request is listed and explained.
+4. Click **Analyze**. The page reloads and every request is listed and explained.
 
 ### 2. (Optional) Start the helper for live tests
 On Windows, double-click `helper\start-helper.bat`. Full walkthrough: [`docs/SETUP.md`](docs/SETUP.md).
@@ -55,7 +55,7 @@ On Windows PowerShell, if `npm` says *running scripts is disabled*, use `npm.cmd
 extension/
   manifest.json          MV3 manifest (DevTools page, localhost helper permission)
   devtools/              registers the "Req2Route" DevTools tab
-  panel/                 the UI: Observe & Explain | Experiment | Live tests
+  panel/                 the UI: Observe | Experiment | Live
   lib/
     layers.js            HAR entry → application / transport / network / link explanation   [Observed]
     tcpsim.js            TCP Reno/Tahoe congestion + flow control model, Mathis, BDP        [Simulated]
