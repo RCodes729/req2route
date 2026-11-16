@@ -6,8 +6,12 @@
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
+  <svg class="bg-wire" viewBox="-50 -50 100 100" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="0.25"><ellipse rx="46" ry="18" transform="rotate(0)"/><ellipse rx="46" ry="18" transform="rotate(5)"/><ellipse rx="46" ry="18" transform="rotate(10)"/><ellipse rx="46" ry="18" transform="rotate(15)"/><ellipse rx="46" ry="18" transform="rotate(20)"/><ellipse rx="46" ry="18" transform="rotate(25)"/><ellipse rx="46" ry="18" transform="rotate(30)"/><ellipse rx="46" ry="18" transform="rotate(35)"/><ellipse rx="46" ry="18" transform="rotate(40)"/><ellipse rx="46" ry="18" transform="rotate(45)"/><ellipse rx="46" ry="18" transform="rotate(50)"/><ellipse rx="46" ry="18" transform="rotate(55)"/><ellipse rx="46" ry="18" transform="rotate(60)"/><ellipse rx="46" ry="18" transform="rotate(65)"/><ellipse rx="46" ry="18" transform="rotate(70)"/><ellipse rx="46" ry="18" transform="rotate(75)"/><ellipse rx="46" ry="18" transform="rotate(80)"/><ellipse rx="46" ry="18" transform="rotate(85)"/><ellipse rx="46" ry="18" transform="rotate(90)"/><ellipse rx="46" ry="18" transform="rotate(95)"/><ellipse rx="46" ry="18" transform="rotate(100)"/><ellipse rx="46" ry="18" transform="rotate(105)"/><ellipse rx="46" ry="18" transform="rotate(110)"/><ellipse rx="46" ry="18" transform="rotate(115)"/><ellipse rx="46" ry="18" transform="rotate(120)"/><ellipse rx="46" ry="18" transform="rotate(125)"/><ellipse rx="46" ry="18" transform="rotate(130)"/><ellipse rx="46" ry="18" transform="rotate(135)"/><ellipse rx="46" ry="18" transform="rotate(140)"/><ellipse rx="46" ry="18" transform="rotate(145)"/><ellipse rx="46" ry="18" transform="rotate(150)"/><ellipse rx="46" ry="18" transform="rotate(155)"/><ellipse rx="46" ry="18" transform="rotate(160)"/><ellipse rx="46" ry="18" transform="rotate(165)"/><ellipse rx="46" ry="18" transform="rotate(170)"/><ellipse rx="46" ry="18" transform="rotate(175)"/><ellipse rx="30" ry="10.5" transform="rotate(0)"/><ellipse rx="30" ry="10.5" transform="rotate(10)"/><ellipse rx="30" ry="10.5" transform="rotate(20)"/><ellipse rx="30" ry="10.5" transform="rotate(30)"/><ellipse rx="30" ry="10.5" transform="rotate(40)"/><ellipse rx="30" ry="10.5" transform="rotate(50)"/><ellipse rx="30" ry="10.5" transform="rotate(60)"/><ellipse rx="30" ry="10.5" transform="rotate(70)"/><ellipse rx="30" ry="10.5" transform="rotate(80)"/><ellipse rx="30" ry="10.5" transform="rotate(90)"/><ellipse rx="30" ry="10.5" transform="rotate(100)"/><ellipse rx="30" ry="10.5" transform="rotate(110)"/><ellipse rx="30" ry="10.5" transform="rotate(120)"/><ellipse rx="30" ry="10.5" transform="rotate(130)"/><ellipse rx="30" ry="10.5" transform="rotate(140)"/><ellipse rx="30" ry="10.5" transform="rotate(150)"/><ellipse rx="30" ry="10.5" transform="rotate(160)"/><ellipse rx="30" ry="10.5" transform="rotate(170)"/></g></svg>
   <header>
-    <h1>Req2Route</h1>
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><svg viewBox="-50 -50 100 100"><g fill="none" stroke="currentColor" stroke-width="1.6"><ellipse rx="44" ry="15" transform="rotate(0)"/><ellipse rx="44" ry="15" transform="rotate(15)"/><ellipse rx="44" ry="15" transform="rotate(30)"/><ellipse rx="44" ry="15" transform="rotate(45)"/><ellipse rx="44" ry="15" transform="rotate(60)"/><ellipse rx="44" ry="15" transform="rotate(75)"/><ellipse rx="44" ry="15" transform="rotate(90)"/><ellipse rx="44" ry="15" transform="rotate(105)"/><ellipse rx="44" ry="15" transform="rotate(120)"/><ellipse rx="44" ry="15" transform="rotate(135)"/><ellipse rx="44" ry="15" transform="rotate(150)"/><ellipse rx="44" ry="15" transform="rotate(165)"/></g></svg></span>
+      <h1>Req2Route<small>request → route</small></h1>
+    </div>
     <nav>
       <button class="tab-btn active" data-tab="observe">Observe &amp; Explain</button>
       <button class="tab-btn" data-tab="experiment">Experiment</button>
@@ -40,8 +44,8 @@
     <!-- EXPERIMENT -->
     <section id="tab-experiment" class="tab">
       <nav class="jump">Jump to:
-        <a href="#card-tcp">TCP congestion</a> · <a href="#card-window">Sliding window</a> · <a href="#card-whatif">What-if throughput</a> ·
-        <a href="#card-subnet">Subnet</a> · <a href="#card-vlsm">VLSM</a> · <a href="#card-acl">ACL</a> · <a href="#card-nat">NAT/PAT</a>
+        <a href="#card-tcp">TCP congestion</a> <a href="#card-window">Sliding window</a> <a href="#card-whatif">What-if throughput</a>
+        <a href="#card-subnet">Subnet</a> <a href="#card-vlsm">VLSM</a> <a href="#card-acl">ACL</a> <a href="#card-nat">NAT/PAT</a>
       </nav>
       <h2 class="layer-title">Transport layer</h2>
       <div class="card" id="card-tcp">

@@ -218,11 +218,11 @@ function drawTcpChart(svg, runs) {
 
   runs.forEach((run, i) => {
     const dashed = run === tcpBaseline;
-    const color = dashed ? '#8c959f' : '#8250df';
+    const color = dashed ? '#6b7280' : '#b18cff';
     svg.append(mk('polyline', { points: run.series.map(p => `${x(p.round)},${y(p.cwnd)}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': dashed ? '5 4' : '' }));
     if (!dashed) {
-      svg.append(mk('polyline', { points: run.series.map(p => `${x(p.round)},${y(p.ssthresh)}`).join(' '), fill: 'none', stroke: '#bf3989', 'stroke-width': 1, 'stroke-dasharray': '2 3' }));
-      run.series.filter(p => p.event).forEach(p => svg.append(mk('circle', { cx: x(p.round), cy: y(p.cwnd), r: 4, fill: p.event === 'timeout' ? '#cf222e' : '#9a6700' })));
+      svg.append(mk('polyline', { points: run.series.map(p => `${x(p.round)},${y(p.ssthresh)}`).join(' '), fill: 'none', stroke: '#ff6bb5', 'stroke-width': 1, 'stroke-dasharray': '2 3' }));
+      run.series.filter(p => p.event).forEach(p => svg.append(mk('circle', { cx: x(p.round), cy: y(p.cwnd), r: 4, fill: p.event === 'timeout' ? '#ff5c5c' : '#ffc53d' })));
     }
   });
   label(W - P, P - 8, `${tcpBaseline ? 'grey dashed = baseline · ' : ''}pink dotted = ssthresh · dots = loss`, 'end');
@@ -362,7 +362,7 @@ function drawSequence(svg, run, prefix, sharedMaxT) {
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.replaceChildren();
   const defs = mk('defs', {});
-  for (const [id, color] of [['data', '#0969da'], ['ack', '#1a7f37']]) {
+  for (const [id, color] of [['data', '#4da3ff'], ['ack', '#3ee089']]) {
     const m = mk('marker', { id: `${prefix}-${id}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' });
     m.append(mk('path', { d: 'M0,0 L10,5 L0,10 z', fill: color }));
     defs.append(m);
@@ -375,14 +375,14 @@ function drawSequence(svg, run, prefix, sharedMaxT) {
   for (const s of run.segments) {
     const fromX = s.kind === 'data' ? SX : RX;
     const toX = s.kind === 'data' ? RX : SX;
-    const color = s.kind === 'data' ? '#0969da' : '#1a7f37';
+    const color = s.kind === 'data' ? '#4da3ff' : '#3ee089';
     const y0 = y(s.t0);
     const y1 = y(s.t1);
     if (s.lost) {
       const mx = (fromX + toX) / 2;
       const my = (y0 + y1) / 2;
       svg.append(mk('line', { x1: fromX, y1: y0, x2: mx, y2: my, stroke: color, 'stroke-width': 1.4, 'stroke-dasharray': s.retransmission ? '4 3' : '' }));
-      svg.append(mk('text', { x: mx, y: my + 4, 'text-anchor': 'middle', 'font-size': 13, fill: '#cf222e', 'font-weight': 700 }, '✕'));
+      svg.append(mk('text', { x: mx, y: my + 4, 'text-anchor': 'middle', 'font-size': 13, fill: '#ff5c5c', 'font-weight': 700 }, '✕'));
     } else {
       svg.append(mk('line', { x1: fromX, y1: y0, x2: toX, y2: y1, stroke: color, 'stroke-width': 1.4, 'stroke-dasharray': s.retransmission ? '4 3' : '', 'marker-end': `url(#${prefix}-${s.kind})` }));
     }
@@ -390,7 +390,7 @@ function drawSequence(svg, run, prefix, sharedMaxT) {
     svg.append(mk('text', { x: lx, y: y0 + 3, 'text-anchor': s.kind === 'data' ? 'end' : 'start', 'font-size': 9, fill: color }, s.kind === 'data' ? `P${s.seq}` : `A${s.seq}`));
   }
   for (const l of run.log.filter(l => l.text.startsWith('Timeout'))) {
-    svg.append(mk('text', { x: SX + 4, y: y(l.time) - 2, 'font-size': 9, fill: '#9a6700' }, '⏱ timeout'));
+    svg.append(mk('text', { x: SX + 4, y: y(l.time) - 2, 'font-size': 9, fill: '#ffc53d' }, '⏱ timeout'));
   }
 }
 
