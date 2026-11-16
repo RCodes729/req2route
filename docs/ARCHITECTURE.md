@@ -33,7 +33,14 @@
 What the browser cannot see (MAC addresses, ARP, raw DNS records, raw sockets) is handled by the helper, and only when the user explicitly runs a test.
 
 ## Labelling contract
-Every object returned by `lib/` carries a `label` field: `Observed`, `Tested` or `Simulated`. The UI must render that badge next to any result. **Do not** merge simulated values into observed views.
+Every object returned by `lib/` carries a `label` field. The UI must render that badge next to any result. **Do not** merge simulated values into observed views.
+
+| Label | Meaning | Example |
+|---|---|---|
+| `Observed` | Seen by the browser on this page load | HAR timings, server IP, connection ID |
+| `Tested` | Measured by a real diagnostic the user triggered | helper DNS / TCP / UDP / ARP |
+| `Simulated` | Output of a model that approximates real behaviour | TCP Reno/Tahoe, GBN vs SR, Mathis, ACL, NAT/PAT |
+| `Calculated` | Exact, deterministic arithmetic: no model, no measurement | subnet calculator, VLSM planner |
 
 ## HAR interpretation notes
 - Timings of `-1` mean *not applicable*: DNS was cached or the connection was reused.

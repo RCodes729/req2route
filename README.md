@@ -13,6 +13,7 @@ DNS and HTTP at the application layer, TCP/QUIC handshakes and connection reuse 
 > | 🟢 **Observed** | Seen by the browser on this page load | `chrome.devtools.network` HAR |
 > | 🟡 **Tested** | Measured by a real diagnostic you triggered | Python helper (DNS, TCP, UDP, ARP) |
 > | 🟣 **Simulated** | Output of a model in the sandbox | `extension/lib/*.js` |
+> | 🔵 **Calculated** | Exact arithmetic, no model or measurement | subnet calculator, VLSM planner |
 
 ---
 
@@ -44,6 +45,7 @@ cd extension && python -m http.server 8811
 npm test          # JS: subnet, VLSM, TCP sim, sliding window, ACL/NAT, HAR → layers   (Node 20+)
 npm run test:py   # Python helper: DNS wire format, ARP parsing, allowlist, live TCP/UDP echo, HTTP API
 ```
+On Windows PowerShell, if `npm` says *running scripts is disabled*, use `npm.cmd test` (see [`docs/SETUP.md`](docs/SETUP.md#troubleshooting)).
 
 ---
 

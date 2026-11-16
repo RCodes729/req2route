@@ -94,7 +94,7 @@
 
       <h2 class="layer-title">Network layer</h2>
       <div class="card" id="card-subnet">
-        <h2>Subnet / CIDR calculator <span class="badge simulated">Calculated</span></h2>
+        <h2>Subnet / CIDR calculator <span class="badge calculated">Calculated</span></h2>
         <form id="subnet-form" class="inline">
           <input name="cidr" value="192.168.10.77/26" aria-label="CIDR">
           <label>Split into /<input name="split" type="number" min="0" max="32" placeholder="28"></label>
@@ -104,7 +104,7 @@
       </div>
 
       <div class="card" id="card-vlsm">
-        <h2>VLSM planner <span class="badge simulated">Calculated</span></h2>
+        <h2>VLSM planner <span class="badge calculated">Calculated</span></h2>
         <div class="two-col">
           <form id="vlsm-form" class="grid small">
             <label>Address block <input name="base" value="192.168.1.0/24"></label>
@@ -123,7 +123,8 @@ Router link 2</textarea></label>
         <h2>ACL decision tester <span class="badge simulated">Simulated</span></h2>
         <div class="two-col">
           <textarea id="acl-rules" rows="7">permit tcp 10.0.0.0/8 any eq 443
-deny tcp any any eq 23
+permit tcp 172.16.0.0 0.15.255.255 any eq https
+deny tcp any any eq telnet
 permit udp any host 8.8.8.8 eq 53
 deny ip 192.168.50.0/24 any</textarea>
           <form id="acl-form" class="grid small">
@@ -164,7 +165,7 @@ deny ip 192.168.50.0/24 any</textarea>
         <pre id="helper-health-out"></pre>
       </div>
       <div class="card">
-        <h2>DNS lookup</h2>
+        <h2>DNS lookup <span class="badge tested">Tested</span></h2>
         <form id="dns-form" class="inline"><input name="name" value="example.com"><button class="primary">Resolve</button></form>
         <pre id="dns-out"></pre>
       </div>
@@ -175,7 +176,7 @@ deny ip 192.168.50.0/24 any</textarea>
         <div id="resolvers-out"></div>
       </div>
       <div class="card">
-        <h2>TCP connect / UDP echo</h2>
+        <h2>TCP connect / UDP echo <span class="badge tested">Tested</span></h2>
         <form id="sock-form" class="inline">
           <input name="host" value="127.0.0.1"><input name="port" type="number" value="9000">
           <button class="primary" name="kind" value="tcp">TCP handshake test</button>
@@ -184,7 +185,7 @@ deny ip 192.168.50.0/24 any</textarea>
         <pre id="sock-out"></pre>
       </div>
       <div class="card">
-        <h2>ARP table (Data Link)</h2>
+        <h2>ARP table (Data Link) <span class="badge tested">Tested</span></h2>
         <button id="arp-btn" class="primary">Read local ARP cache</button>
         <div id="arp-out"></div>
       </div>

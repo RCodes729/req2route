@@ -1,6 +1,6 @@
 :root {
   --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --card: #f6f8fa;
-  --accent: #0969da; --observed: #1a7f37; --tested: #9a6700; --simulated: #8250df;
+  --accent: #0969da; --observed: #1a7f37; --tested: #9a6700; --simulated: #8250df; --calculated: #0550ae;
   --app: #0969da; --transport: #bf3989; --network: #1a7f37; --browser: #8c959f;
 }
 @media (prefers-color-scheme: dark) {
@@ -28,6 +28,7 @@ main { padding: 12px; }
 .badge.observed { background: var(--observed); }
 .badge.tested { background: var(--tested); }
 .badge.simulated { background: var(--simulated); }
+.badge.calculated { background: var(--calculated); }
 .summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
 .stat b { display: block; font-size: 16px; }
