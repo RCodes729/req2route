@@ -7,6 +7,7 @@ DNS record lookups, TCP handshake timing, UDP echo/loss tests and reading the AR
 Safety rules (keep these when extending the helper):
   * binds to 127.0.0.1 only;
   * accepts requests only from chrome-extension:// origins (or no Origin, e.g. curl);
+    if allowed_extension_ids is set in config.json, only those extension IDs;
   * rejects browser no-cors / navigation requests (Sec-Fetch-Mode), which carry no Origin;
   * rejects requests whose Host header is not localhost (blocks DNS-rebinding);
   * TCP/UDP tests run only against targets listed in config.json.
@@ -33,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = {
     "allowed_test_targets": ["127.0.0.1", "localhost"],
     "allowed_ports": [9000],
+    "allowed_extension_ids": [],  # empty = any chrome-extension:// origin; list IDs to pin the helper
     "dns_resolvers": {"Cloudflare": "1.1.1.1", "Google": "8.8.8.8", "Quad9": "9.9.9.9"},
 }
 
@@ -48,7 +50,38 @@ def load_config(path: str | None = None) -> dict:
     path = path or os.path.join(HERE, "config.json")
     if os.path.exists(path):
         with open(path, encoding="utf-8") as fh:
-            cfg.update(json.load(fh))
+            loaded = json.load(fh)
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{path}: the config must be a JSON object")
+        cfg.update(loaded)
+    return validate_config(cfg)
+
+
+EXTENSION_ID_RE = re.compile(r"^[a-p]{32}$")
+
+
+def validate_config(cfg: dict) -> dict:
+    """Fail closed on a malformed config: raise ValueError rather than guess what was meant."""
+    ids = cfg.get("allowed_extension_ids")
+    if not isinstance(ids, list):
+        raise ValueError('config "allowed_extension_ids" must be a list of extension ID strings, e.g. ["abc..."]')
+    clean_ids = []
+    for ext_id in ids:
+        if not isinstance(ext_id, str) or not EXTENSION_ID_RE.match(ext_id.lower()):
+            raise ValueError(
+                f'config "allowed_extension_ids" has an invalid entry {ext_id!r}: '
+                "each ID must be 32 letters a-p (copy it from chrome://extensions)"
+            )
+        clean_ids.append(ext_id.lower())
+    cfg["allowed_extension_ids"] = clean_ids
+
+    ports = cfg.get("allowed_ports")
+    if not isinstance(ports, list) or not all(isinstance(p, int) and not isinstance(p, bool) for p in ports):
+        raise ValueError('config "allowed_ports" must be a list of integers, e.g. [9000]')
+
+    targets = cfg.get("allowed_test_targets")
+    if not isinstance(targets, list) or not all(isinstance(t, str) for t in targets):
+        raise ValueError('config "allowed_test_targets" must be a list of strings, e.g. ["127.0.0.1"]')
     return cfg
 
 
@@ -58,7 +91,8 @@ def check_target(cfg: dict, host: str, port: int) -> None:
             f"{host} is not an approved test target. Add it to helper/config.json "
             "only if your team controls it."
         )
-    if cfg.get("allowed_ports") and port not in cfg["allowed_ports"]:
+    # A missing or empty allowed_ports means "no port is allowed", never "every port".
+    if port not in (cfg.get("allowed_ports") or []):
         raise PermissionError(f"Port {port} is not in allowed_ports in helper/config.json")
 
 
@@ -404,15 +438,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         origin = self.headers.get("Origin", "")
-        if origin.startswith("chrome-extension://"):
+        if self._origin_ok(origin):
             self.send_header("Access-Control-Allow-Origin", origin)
         self.end_headers()
         self.wfile.write(body)
+
+    def _origin_ok(self, origin: str) -> bool:
+        """True for a chrome-extension:// origin that passes the optional ID pin."""
+        prefix = "chrome-extension://"
+        if not origin.startswith(prefix):
+            return False
+        pinned = self.config.get("allowed_extension_ids") or []
+        return not pinned or origin[len(prefix):] in pinned
 
     def _allowed(self) -> str | None:
         origin = self.headers.get("Origin")
         if origin and not origin.startswith("chrome-extension://"):
             return "Origin not allowed: only the Req2Route extension may call the helper"
+        if origin and not self._origin_ok(origin):
+            return "Extension not allowed: its ID is not in allowed_extension_ids in helper/config.json"
         # A web page can reach us without an Origin header via <img>/<script>/<iframe> or a
         # navigation. Browsers label those with Sec-Fetch-Mode; the extension's fetch() is "cors".
         if (self.headers.get("Sec-Fetch-Mode") or "").lower() in ("no-cors", "navigate", "nested-navigate"):
@@ -438,7 +482,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "version": "1.0.0", "os": platform.system(),
                                         "dnspython": has_dnspython,
                                         "allowedTargets": self.config["allowed_test_targets"],
-                                        "allowedPorts": self.config["allowed_ports"]})
+                                        "allowedPorts": self.config.get("allowed_ports") or [],
+                                        "extensionPinned": bool(self.config.get("allowed_extension_ids"))})
             if url.path == "/dns":
                 return self._send(200, dns_lookup(q.get("name", "")))
             if url.path == "/resolvers":
@@ -468,7 +513,11 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--config", help="path to config.json")
     args = ap.parse_args()
-    server = make_server(args.port, load_config(args.config))
+    try:
+        config = load_config(args.config)
+    except (ValueError, OSError) as exc:  # ValueError includes json.JSONDecodeError
+        raise SystemExit(f"Req2Route helper: bad config, not starting. {exc}")
+    server = make_server(args.port, config)
     print(f"Req2Route helper listening on http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
     print(f"Approved test targets: {server.RequestHandlerClass.config['allowed_test_targets']}")
     try:

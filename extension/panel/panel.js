@@ -342,7 +342,7 @@ $('#helper-health').addEventListener('click', () => run('#helper-health-out', he
   ['Status', el('span', { class: 'status' }, 'Running')],
   ['Version', `${h.version} on ${h.os}`],
   ['dnspython', h.dnspython ? 'installed (TTL, CNAME, MX, NS)' : 'not installed (A/AAAA only)'],
-  ['Test targets', `${h.allowedTargets.join(', ')} : ${h.allowedPorts.join(', ')}`],
+  ['Test targets', `${h.allowedTargets.join(', ')} : ${h.allowedPorts.length ? h.allowedPorts.join(', ') : 'none'}`],
 ]), 'Checking…'));
 
 $('#dns-form').addEventListener('submit', ev => {

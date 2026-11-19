@@ -1,5 +1,6 @@
 {
   "allowed_test_targets": ["127.0.0.1", "localhost"],
   "allowed_ports": [9000],
+  "allowed_extension_ids": [],
   "dns_resolvers": {"Cloudflare": "1.1.1.1", "Google": "8.8.8.8", "Quad9": "9.9.9.9"}
 }

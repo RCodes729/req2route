@@ -68,6 +68,80 @@ class Validation(unittest.TestCase):
         with self.assertRaises(PermissionError):
             server.check_target(cfg, "127.0.0.1", 22)
 
+    def test_empty_allowed_ports_denies_every_port(self):
+        cfg = {"allowed_test_targets": ["127.0.0.1"], "allowed_ports": []}
+        with self.assertRaises(PermissionError) as ctx:
+            server.check_target(cfg, "127.0.0.1", 9000)
+        self.assertIn("allowed_ports", str(ctx.exception))
+        with self.assertRaises(PermissionError):
+            server.check_target(cfg, "127.0.0.1", 22)
+
+    def test_missing_allowed_ports_denies_every_port(self):
+        cfg = {"allowed_test_targets": ["127.0.0.1"]}
+        with self.assertRaises(PermissionError) as ctx:
+            server.check_target(cfg, "127.0.0.1", 9000)
+        self.assertIn("allowed_ports", str(ctx.exception))
+
+    def test_listed_port_still_allowed(self):
+        cfg = {"allowed_test_targets": ["127.0.0.1"], "allowed_ports": [9000, 9001]}
+        server.check_target(cfg, "127.0.0.1", 9001)
+
+    def test_load_config_defaults(self):
+        cfg = server.load_config(os.path.join(os.path.dirname(__file__), "no-such-config.json"))
+        self.assertEqual(cfg["allowed_ports"], [9000])
+        self.assertEqual(cfg["allowed_extension_ids"], [])
+
+
+class ConfigValidation(unittest.TestCase):
+    GOOD_ID = "abcdefghijklmnopabcdefghijklmnop"
+
+    def _load(self, **overrides):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "config.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(overrides, fh)
+            return server.load_config(path)
+
+    def test_string_instead_of_list_ids_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            self._load(allowed_extension_ids=self.GOOD_ID)
+        self.assertIn("allowed_extension_ids", str(ctx.exception))
+
+    def test_empty_string_id_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            self._load(allowed_extension_ids=[""])
+        self.assertIn("allowed_extension_ids", str(ctx.exception))
+
+    def test_malformed_id_rejected(self):
+        for bad in ("short", self.GOOD_ID + "a", "z" * 32, "abcdefghijklmnopabcdefghijklmno1"):
+            with self.assertRaises(ValueError, msg=bad):
+                self._load(allowed_extension_ids=[bad])
+        with self.assertRaises(ValueError):
+            self._load(allowed_extension_ids=[123])
+
+    def test_uppercase_id_accepted_and_lowercased(self):
+        cfg = self._load(allowed_extension_ids=[self.GOOD_ID.upper()])
+        self.assertEqual(cfg["allowed_extension_ids"], [self.GOOD_ID])
+
+    def test_string_ports_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            self._load(allowed_ports=["9000"])
+        self.assertIn("allowed_ports", str(ctx.exception))
+        with self.assertRaises(ValueError):
+            self._load(allowed_ports="9000")
+
+    def test_bad_targets_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            self._load(allowed_test_targets="127.0.0.1")
+        self.assertIn("allowed_test_targets", str(ctx.exception))
+        with self.assertRaises(ValueError):
+            self._load(allowed_test_targets=[127])
+
+    def test_valid_config_loads(self):
+        cfg = self._load(allowed_ports=[9000, 9001], allowed_test_targets=["localhost"])
+        self.assertEqual(cfg["allowed_ports"], [9000, 9001])
+
 
 class LiveSockets(unittest.TestCase):
     @classmethod
@@ -160,6 +234,80 @@ class HttpApi(unittest.TestCase):
         self.assertTrue(body["records"])
         # timeMs is the address lookup only, so it can never exceed the total
         self.assertLessEqual(body["timeMs"], body["totalMs"])
+
+    def test_health_reports_unpinned(self):
+        _, body = self.get("/health", {"Origin": "chrome-extension://abc"})
+        self.assertIs(body["extensionPinned"], False)
+
+    def test_empty_allowed_ports_blocks_tcp_over_http(self):
+        # A config with allowed_ports [] must deny, not allow, every port.
+        Handler = server.Handler
+        old = Handler.config
+        Handler.config = {"allowed_test_targets": ["127.0.0.1"], "allowed_ports": []}
+        try:
+            code, body = self.get("/tcp?host=127.0.0.1&port=9000")
+        finally:
+            Handler.config = old
+        self.assertEqual(code, 403)
+        self.assertIn("allowed_ports", body["error"])
+
+
+class PinnedHttpApi(unittest.TestCase):
+    PINNED = "abcdefghijklmnopabcdefghijklmnop"
+    OTHER = "ponmlkjihgfedcbaponmlkjihgfedcba"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.httpd = server.make_server(0, {"allowed_test_targets": ["127.0.0.1"], "allowed_ports": [9000],
+                                           "allowed_extension_ids": [cls.PINNED]})
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown(); cls.httpd.server_close()
+
+    def get(self, path, headers=None):
+        req = urllib.request.Request(self.base + path, headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, json.loads(r.read()), r.headers
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read()), e.headers
+
+    def test_pinned_extension_accepted(self):
+        code, body, headers = self.get("/health", {"Origin": f"chrome-extension://{self.PINNED}"})
+        self.assertEqual(code, 200)
+        self.assertIs(body["extensionPinned"], True)
+        self.assertEqual(headers["Access-Control-Allow-Origin"], f"chrome-extension://{self.PINNED}")
+
+    def test_other_extension_rejected(self):
+        code, body, headers = self.get("/health", {"Origin": f"chrome-extension://{self.OTHER}"})
+        self.assertEqual(code, 403)
+        self.assertIn("not allowed", body["error"])
+        self.assertIsNone(headers["Access-Control-Allow-Origin"])
+
+    def test_no_origin_still_allowed_for_curl(self):
+        code, _, _ = self.get("/health")
+        self.assertEqual(code, 200)
+
+    def test_web_origin_still_blocked(self):
+        code, _, _ = self.get("/health", {"Origin": "https://evil.example"})
+        self.assertEqual(code, 403)
+
+
+class UnpinnedCors(unittest.TestCase):
+    def test_unpinned_echoes_any_extension_origin(self):
+        httpd = server.make_server(0, {"allowed_test_targets": ["127.0.0.1"], "allowed_ports": [9000],
+                                       "allowed_extension_ids": []})
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{httpd.server_address[1]}/health",
+                                         headers={"Origin": "chrome-extension://anything"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                self.assertEqual(r.headers["Access-Control-Allow-Origin"], "chrome-extension://anything")
+        finally:
+            httpd.shutdown(); httpd.server_close()
 
 
 if __name__ == "__main__":
