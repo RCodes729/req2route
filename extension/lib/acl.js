@@ -41,14 +41,25 @@ export function parseAclLine(line) {
   if (!['permit', 'deny'].includes(rule.action)) throw new Error(`Rule must start with permit/deny: "${line}"`);
   rule.proto = tokens[i++];
   if (!['ip', 'tcp', 'udp', 'icmp'].includes(rule.proto)) throw new Error(`Unknown protocol in: "${line}"`);
-  const readAddr = () => {
+  const isAddrStart = x => x === 'any' || x === 'host' || (x && (x.includes('/') || isIPv4(x)));
+  const readAddr = isSrc => {
     const t = tokens[i++];
     if (t === 'host') return `host ${tokens[i++]}`;
     if (t === 'any') return 'any';
-      if (t && t.includes('/')) return t;
+    if (t && t.includes('/')) return t;
     if (t && isIPv4(t)) {
-      const prefix = wildcardToPrefix(tokens[i]);
+      const next = tokens[i];
+      const prefix = wildcardToPrefix(next);
       if (prefix !== null) { i++; return `${t}/${prefix}`; }
+      // A dotted quad after a bare address that is not a contiguous wildcard is either the
+      // destination ("permit ip 10.0.0.1 10.0.0.2") or a mistyped wildcard ("10.0.0.0 0.0.0.5 any").
+      // For the source it is a bad wildcard only if another address follows it that is not itself
+      // a valid wildcard; if the thing after it is a wildcard ("10.0.0.1 10.0.0.0 0.0.0.255"),
+      // it is the destination. After the destination nothing address-like may follow, so it can
+      // only be a bad wildcard.
+      if (next && isIPv4(next) && (!isSrc || (isAddrStart(tokens[i + 1]) && wildcardToPrefix(tokens[i + 1]) === null))) {
+        throw new Error(`Non-contiguous wildcard mask "${next}" in: "${line}"`);
+      }
       return t;
     }
     throw new Error(`Bad address "${t}" in: "${line}"`);
@@ -60,9 +71,9 @@ export function parseAclLine(line) {
     throw new Error(`Bad port "${t}" in: "${line}"`);
   };
 
-  rule.src = readAddr();
-  rule.dst = readAddr();
-   if (tokens[i] === 'eq') { rule.dstPort = readPort(tokens[i + 1]); i += 2; }
+  rule.src = readAddr(true);
+  rule.dst = readAddr(false);
+  if (tokens[i] === 'eq') { rule.dstPort = readPort(tokens[i + 1]); i += 2; }
   else if (tokens[i] === 'range') { rule.dstPort = [readPort(tokens[i + 1]), readPort(tokens[i + 2])]; i += 3; }
   if (i < tokens.length) throw new Error(`Unexpected "${tokens.slice(i).join(' ')}" in: "${line}"`);
   return rule;
@@ -105,7 +116,7 @@ export function natTranslate(flows, { publicIp = '203.0.113.10', startPort = 500
       table.push({ ...f, translated: false, note: 'Source already public — no translation' });
       continue;
     }
-     if (!seen.has(key)) {
+    if (!seen.has(key)) {
       if (nextPort > 65535) throw new Error(`Out of public ports: PAT pool exhausted at ${publicIp}:65535`);
       seen.set(key, nextPort++);
     }
