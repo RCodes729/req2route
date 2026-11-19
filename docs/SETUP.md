@@ -14,16 +14,16 @@
 ## 2. Use it
 1. Open any website, for example `https://www.wikipedia.org`.
 2. Press **F12** to open DevTools. Find the **Req2Route** tab (it may be under the `»` menu).
-3. Click **Analyze this page**. The page reloads and every request appears.
+3. Click **Analyze**. The page reloads and every request appears.
 4. Click a request to see its layer-by-layer explanation.
 5. Open the **Experiment** tab for the simulators.
 
-## 3. Start the helper (for the Live tests tab)
+## 3. Start the helper (for the Live tab)
 Double-click `helper\start-helper.bat`. It opens two windows:
 - **Req2Route echo server** on port 9000, the team-controlled target for TCP/UDP tests
 - **Req2Route helper** on `http://127.0.0.1:8765`
 
-In the extension's **Live tests** tab, click **Check helper**. You should see `"ok": true`.
+In the extension's **Live** tab, click **Check helper**. You should see `"ok": true`.
 
 Optional: `pip install dnspython` makes the DNS test show TTL, CNAME, MX and NS records.
 
@@ -33,11 +33,18 @@ cd helper
 python echo_server.py --port 9000 --loss 10 --delay 40
 ```
 
+## Helper config (optional)
+Copy `helper\config.example.json` to `helper\config.json` to change the defaults. Two keys control access:
+- `allowed_ports`: the ports TCP/UDP tests may use (default `[9000]`). An empty or missing list allows no port, so every TCP/UDP test is refused.
+- `allowed_extension_ids`: a list of extension IDs allowed to call the helper (default `[]`). Empty means any Chrome extension can call it. To pin it to Req2Route, open `chrome://extensions`, turn on **Developer mode**, copy the **ID** shown on the Req2Route card, and set `"allowed_extension_ids": ["<that id>"]`. To confirm the pin took effect, open `http://127.0.0.1:8765/health` (for example with `curl http://127.0.0.1:8765/health`); the helper reports `"extensionPinned": true` there. The **Check helper** panel does not display this field. IDs must be 32 letters a-p; a malformed config stops the helper at startup with a clear message.
+
+Restart the helper after editing the file.
+
 ## Troubleshooting
 | Problem | Fix |
 |---|---|
 | No Req2Route tab in DevTools | Close and reopen DevTools after loading the extension |
-| Request list is empty | Click **Analyze this page**; DevTools only sees requests made while it is open |
+| Request list is empty | Click **Analyze**; DevTools only sees requests made while it is open |
 | "Helper not reachable" | Check the helper window is still open; run `python helper\server.py` to see errors |
 | TCP/UDP test says "not an approved test target" | Only hosts in `helper\config.json` can be tested; add only machines your team controls |
 | Firewall prompt | Allow on **Private networks** |
