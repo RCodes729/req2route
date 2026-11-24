@@ -50,6 +50,11 @@
         <p class="hint">Several requests on one connection share a single handshake.</p>
         <div id="connections"></div>
       </section>
+      <section class="panel">
+        <div class="section-head"><h2>RTT ledger <span class="badge simulated">Simulated</span></h2></div>
+        <p class="hint">A new connection's TCP handshake is one round trip, so it measures the RTT for free. Every other phase is then counted in RTTs, and the download is checked against a slow-start model.</p>
+        <div id="ledger"></div>
+      </section>
     </section>
 
     <!-- EXPERIMENT -->
