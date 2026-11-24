@@ -177,6 +177,96 @@ class LiveSockets(unittest.TestCase):
         self.assertEqual(r["lossPct"], 100.0)
 
 
+class HandshakeSizes(unittest.TestCase):
+    def test_windows_packet_sizes_off_loopback(self):
+        p = {x["name"]: x for x in server.handshake_packets("192.168.1.10", system="Windows")}
+        self.assertEqual(p["SYN"]["tcpHeader"], 32)         # 20 + 12 option bytes
+        self.assertEqual(p["SYN"]["ipBytes"], 52)           # 20 IP + 32 TCP
+        self.assertEqual(p["SYN-ACK"]["ipBytes"], 52)
+        self.assertEqual(p["ACK"]["ipBytes"], 40)           # bare 20 + 20
+        self.assertEqual(p["SYN"]["frameBytes"], 66)        # + 14 Ethernet
+        self.assertEqual(p["ACK"]["frameBytes"], 60)        # 54 padded up to the 60-byte minimum
+        self.assertEqual(p["ACK"]["padBytes"], 6)
+        self.assertTrue(all(x["payload"] == 0 for x in p.values()))
+
+    def test_linux_options_include_timestamps(self):
+        p = {x["name"]: x for x in server.handshake_packets("10.0.0.2", system="Linux")}
+        self.assertEqual(p["SYN"]["ipBytes"], 60)
+        self.assertEqual(p["ACK"]["ipBytes"], 52)
+
+    def test_loopback_has_no_ethernet_header(self):
+        for x in server.handshake_packets("127.0.0.1", system="Windows"):
+            self.assertEqual(x["linkBytes"], 0)
+            self.assertEqual(x["frameBytes"], x["ipBytes"])
+
+    def test_ipv6_header_is_40_bytes(self):
+        syn = server.handshake_packets("2001:db8::1", system="Windows")[0]
+        self.assertEqual(syn["ipHeader"], 40)
+        self.assertEqual(syn["ipBytes"], 40 + 32)
+
+    def test_data_packet_overhead(self):
+        d = server.data_packet("10.0.0.2", 64, system="Windows")
+        self.assertEqual(d["ipBytes"], 104)
+        self.assertEqual(d["headerOverheadPct"], round(100 * 40 / 104, 1))
+
+
+class TcpHandshakeLive(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tcp, cls.udp = echo_server.start("127.0.0.1", 0)
+        cls.port = cls.tcp.server_address[1]
+        cls.cfg = {"allowed_test_targets": ["127.0.0.1"], "allowed_ports": [cls.port]}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tcp.shutdown(); cls.udp.shutdown()
+        cls.tcp.server_close(); cls.udp.server_close()
+
+    def test_result_reports_sizes_and_measured_data_round_trip(self):
+        r = server.tcp_connect_test(self.cfg, "127.0.0.1", self.port, attempts=2, payload=100)
+        s = r["sizes"]
+        self.assertEqual(s["label"], "Calculated")
+        self.assertEqual(len(s["packets"]), 3)
+        self.assertEqual(s["handshakeIpBytes"], sum(p["ipBytes"] for p in s["packets"]))
+        self.assertGreater(s["mss"], 0)
+        d = s["dataExchange"]
+        self.assertEqual((d["sentBytes"], d["receivedBytes"], d["echoed"]), (100, 100, True))
+        self.assertGreater(d["rttMs"], 0)
+        self.assertEqual(d["ipBytes"], d["headerBytes"] + 100)
+
+    def test_payload_zero_skips_data_exchange_and_is_clamped(self):
+        r = server.tcp_connect_test(self.cfg, "127.0.0.1", self.port, attempts=1, payload=0)
+        self.assertNotIn("dataExchange", r["sizes"])
+        r = server.tcp_connect_test(self.cfg, "127.0.0.1", self.port, attempts=1, payload=10_000_000)
+        self.assertEqual(r["sizes"]["dataExchange"]["sentBytes"], server.MAX_PAYLOAD)
+
+    def test_probe_targets_sees_the_echo_server(self):
+        self.assertEqual(server.probe_targets(self.cfg), [{"target": f"127.0.0.1:{self.port}", "listening": True}])
+
+
+class RefusedConnection(unittest.TestCase):
+    """The WinError 10061 case: the target is approved but nothing is listening on it."""
+
+    def setUp(self):
+        import socket
+        with socket.socket() as s:  # grab a port that is certainly free, then close it
+            s.bind(("127.0.0.1", 0))
+            self.port = s.getsockname()[1]
+        self.cfg = {"allowed_test_targets": ["127.0.0.1"], "allowed_ports": [self.port]}
+
+    def test_refused_is_reported_once_with_a_hint(self):
+        r = server.tcp_connect_test(self.cfg, "127.0.0.1", self.port, attempts=3)
+        self.assertEqual(r["succeeded"], 0)
+        self.assertEqual(len(r["samples"]), 1)  # stops after the first refusal
+        self.assertTrue(r["samples"][0]["refused"])
+        self.assertIn("nothing is listening", r["samples"][0]["error"])
+        self.assertIn("echo_server.py", r["hint"])
+        self.assertNotIn("sizes", r)
+
+    def test_probe_targets_reports_not_listening(self):
+        self.assertEqual(server.probe_targets(self.cfg), [{"target": f"127.0.0.1:{self.port}", "listening": False}])
+
+
 class HttpApi(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

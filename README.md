@@ -59,6 +59,7 @@ extension/
   lib/
     layers.js            HAR entry → application / transport / network / link explanation   [Observed]
     tcpsim.js            TCP Reno/Tahoe congestion + flow control model, Mathis, BDP        [Simulated]
+    ledger.js            RTT ledger: handshake → RTT, TTFB split, slow-start vs observed    [Simulated]
     window.js            Go-Back-N vs Selective Repeat discrete-event simulator             [Simulated]
     subnet.js            IPv4, CIDR, masks, private/public classification, subnet splitting
     vlsm.js              VLSM planner (largest subnet first, aligned blocks)
@@ -82,6 +83,11 @@ docs/                    architecture, roadmap, report notes
 | Transport: TCP, UDP, QUIC | new vs reused connections, handshake/TLS time, ports, requests per connection (HTTP/2 multiplexing) | TCP handshake timing, UDP echo loss/RTT (with injected loss/delay) | cwnd/ssthresh (Reno/Tahoe), rwnd flow control; Go-Back-N vs Selective Repeat; RTT/loss/bandwidth what-if (Mathis, BDP) |
 | Network: IP, CIDR, NAT, ACL | server IP, IPv4/IPv6, address type | — | subnet calculator, VLSM planner, ACL first-match, NAT/PAT table |
 | Data link: ARP, VLAN, STP | — (browsers can't see it) | ARP cache (with permission) | VLAN isolation and STP *(stretch goal)* |
+
+### What is new beyond a packet viewer
+
+- **RTT ledger (Observe tab).** A new connection's TCP handshake is exactly one round trip, so the handshake time Chrome already reports is a free RTT measurement. Req2Route then writes everything else in RTTs: the TLS handshake (about 1 RTT = TLS 1.3, about 2 = TLS 1.2), and the wait for the first byte, split into one RTT of network time and the server's own think time. Finally it feeds each download to a slow-start model (initial window 10 segments, doubling per RTT) and says whether the *Simulated* time agrees with the *Observed* one; when it does not, the limit is bandwidth or loss, not latency. It also totals the handshake time that connection reuse avoided.
+- **Handshake packet sizes (Live tab).** The TCP handshake test reports the size of the SYN, SYN-ACK and ACK from the IP/TCP header layout and the options the OS sends (*Calculated*, not captured), the negotiated MSS, and a measured data round trip so the 0-byte handshake can be compared with a real data segment.
 
 HTTPS/TLS is covered only at the basic level here. Deeper security analysis belongs to the separate Information Security project.
 

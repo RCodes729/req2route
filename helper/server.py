@@ -291,25 +291,119 @@ def compare_resolvers(cfg: dict, name: str) -> dict:
 
 
 # --------------------------------------------------------------------------- TCP / UDP
-def tcp_connect_test(cfg: dict, host: str, port: int, attempts: int = 3, timeout: float = 3.0) -> dict:
+# TCP option bytes carried by each handshake segment. Typical values, not measured:
+#   Windows SYN / SYN-ACK: MSS(4) + NOP + WindowScale(3) + NOP + NOP + SACK-permitted(2) = 12, plain ACK = 0
+#   Linux / macOS SYN / SYN-ACK: MSS(4) + SACK-permitted(2) + Timestamps(10) + NOP + WindowScale(3) = 20,
+#   and every later segment carries NOP + NOP + Timestamps(10) = 12.
+TCP_OPTION_BYTES = {
+    "Windows": {"SYN": 12, "SYN-ACK": 12, "ACK": 0},
+    "default": {"SYN": 20, "SYN-ACK": 20, "ACK": 12},
+}
+MAX_PAYLOAD = 1400  # keeps the data round trip inside one segment on any real link
+ETH_HEADER, ETH_MIN_FRAME = 14, 60  # frame size without the 4-byte FCS; shorter frames are padded to 60
+
+
+def is_loopback(host: str) -> bool:
+    return host in ("localhost", "::1") or host.startswith("127.")
+
+
+def handshake_packets(host: str, system: str | None = None) -> list[dict]:
+    """Size of the three handshake segments, calculated from the header layout (label: Calculated).
+
+    Nothing here is captured off the wire (that needs a packet sniffer and admin rights); the
+    point is to show *why* a handshake costs ~150 bytes and no payload.
+    """
+    opts = TCP_OPTION_BYTES.get(system or platform.system(), TCP_OPTION_BYTES["default"])
+    ip_hdr = 40 if ":" in host else 20
+    link = 0 if is_loopback(host) else ETH_HEADER
+    packets = []
+    for name, direction, flags in (("SYN", "client → server", "SYN"),
+                                   ("SYN-ACK", "server → client", "SYN, ACK"),
+                                   ("ACK", "client → server", "ACK")):
+        tcp_hdr = 20 + opts[name]
+        ip_bytes = ip_hdr + tcp_hdr
+        pad = max(0, ETH_MIN_FRAME - (link + ip_bytes)) if link else 0
+        packets.append({
+            "name": name, "direction": direction, "flags": flags,
+            "ipHeader": ip_hdr, "tcpHeader": tcp_hdr, "tcpOptions": opts[name], "payload": 0,
+            "ipBytes": ip_bytes, "linkBytes": link, "padBytes": pad, "frameBytes": link + ip_bytes + pad,
+        })
+    return packets
+
+
+def data_packet(host: str, payload_len: int, system: str | None = None) -> dict:
+    """Size of one data segment (Calculated) so the handshake overhead can be compared with real data."""
+    opts = TCP_OPTION_BYTES.get(system or platform.system(), TCP_OPTION_BYTES["default"])
+    ip_hdr = 40 if ":" in host else 20
+    headers = ip_hdr + 20 + opts["ACK"]
+    ip_bytes = headers + payload_len
+    return {"payload": payload_len, "headerBytes": headers, "ipBytes": ip_bytes,
+            "headerOverheadPct": round(100 * headers / ip_bytes, 1)}
+
+
+def tcp_mss(sock: socket.socket, host: str) -> tuple[int, str]:
+    opt = getattr(socket, "TCP_MAXSEG", None)  # not exposed on Windows
+    if opt is not None:
+        try:
+            return sock.getsockopt(socket.IPPROTO_TCP, opt), "socket option"
+        except OSError:
+            pass
+    mtu = 65535 if is_loopback(host) else 1500
+    return mtu - (40 if ":" in host else 20) - 20, "estimated from the link MTU"
+
+
+def _echo_probe(sock: socket.socket, size: int, timeout: float = 1.0) -> dict:
+    """Send `size` bytes on an open connection and time the echo (a measured data round trip)."""
+    data = (b"R2R-payload-" * (size // 12 + 1))[:size]
+    sock.settimeout(timeout)
+    started = time.perf_counter()
+    sock.sendall(data)
+    got = b""
+    try:
+        while len(got) < size:
+            chunk = sock.recv(size - len(got))
+            if not chunk:
+                break
+            got += chunk
+    except OSError:  # includes timeout: the target is not an echo server
+        pass
+    return {"sentBytes": size, "receivedBytes": len(got), "echoed": got == data,
+            "rttMs": round((time.perf_counter() - started) * 1000, 3) if got == data else None}
+
+
+def tcp_connect_test(cfg: dict, host: str, port: int, attempts: int = 3, timeout: float = 3.0,
+                     payload: int = 64) -> dict:
     check_target(cfg, host, port)
+    payload = max(0, min(int(payload), MAX_PAYLOAD))
     samples = []
+    mss: tuple[int, str] | None = None
     for _ in range(attempts):
         started = time.perf_counter()
         try:
             with socket.create_connection((host, port), timeout=timeout) as s:
                 elapsed = (time.perf_counter() - started) * 1000
                 local, remote = s.getsockname(), s.getpeername()
-                samples.append({
+                sample = {
                     "ok": True,
                     "handshakeMs": round(elapsed, 3),
                     "local": f"{local[0]}:{local[1]}",
                     "remote": f"{remote[0]}:{remote[1]}",
-                })
+                }
+                if mss is None:
+                    mss = tcp_mss(s, host)
+                if payload:
+                    sample["data"] = _echo_probe(s, payload)
+                samples.append(sample)
+        except ConnectionRefusedError:
+            # Nothing is listening: more attempts cannot succeed (and Windows retries a refused
+            # connect for ~2 s each), so report it once, clearly.
+            samples.append({"ok": False, "refused": True,
+                            "error": f"Connection refused: nothing is listening on {host}:{port}."})
+            break
         except OSError as exc:
             samples.append({"ok": False, "error": str(exc)})
     ok = [s["handshakeMs"] for s in samples if s["ok"]]
-    return {
+    result = {
         "test": "tcp-connect",
         "target": f"{host}:{port}",
         "attempts": attempts,
@@ -318,6 +412,38 @@ def tcp_connect_test(cfg: dict, host: str, port: int, attempts: int = 3, timeout
         "note": "Each sample is a full 3-way handshake; note the new ephemeral local port every time.",
         "samples": samples,
     }
+    if any(s.get("refused") for s in samples):
+        result["hint"] = (f"Start the echo server: double-click helper\\start-helper.bat, or run "
+                          f"python helper/echo_server.py --port {port}")
+    if ok and mss:
+        packets = handshake_packets(host)
+        result["sizes"] = {
+            "label": "Calculated",
+            "note": "Sizes are worked out from the IP/TCP header layout with the options this OS normally sends; "
+                    "they are not captured off the wire. The data round trip below is measured.",
+            "packets": packets,
+            "handshakeIpBytes": sum(p["ipBytes"] for p in packets),
+            "handshakeFrameBytes": sum(p["frameBytes"] for p in packets),
+            "mss": mss[0], "mssSource": mss[1],
+        }
+        first = next((s["data"] for s in samples if s["ok"] and s.get("data")), None)
+        if first:
+            result["sizes"]["dataExchange"] = {**first, **data_packet(host, first["sentBytes"])}
+    return result
+
+
+def probe_targets(cfg: dict, timeout: float = 0.5) -> list[dict]:
+    """Is anything listening on the approved targets? Only allowlisted host:port pairs are touched."""
+    out = []
+    for host in cfg.get("allowed_test_targets", [])[:4]:
+        for port in (cfg.get("allowed_ports") or [])[:4]:
+            try:
+                socket.create_connection((host, port), timeout=timeout).close()
+                up = True
+            except OSError:
+                up = False
+            out.append({"target": f"{host}:{port}", "listening": up})
+    return out
 
 
 def udp_echo_test(cfg: dict, host: str, port: int, count: int = 10, timeout: float = 1.0) -> dict:
@@ -483,13 +609,15 @@ class Handler(BaseHTTPRequestHandler):
                                         "dnspython": has_dnspython,
                                         "allowedTargets": self.config["allowed_test_targets"],
                                         "allowedPorts": self.config.get("allowed_ports") or [],
+                                        "targetStatus": probe_targets(self.config),
                                         "extensionPinned": bool(self.config.get("allowed_extension_ids"))})
             if url.path == "/dns":
                 return self._send(200, dns_lookup(q.get("name", "")))
             if url.path == "/resolvers":
                 return self._send(200, compare_resolvers(self.config, q.get("name", "")))
             if url.path == "/tcp":
-                return self._send(200, tcp_connect_test(self.config, q.get("host", ""), int(q.get("port", 0))))
+                return self._send(200, tcp_connect_test(self.config, q.get("host", ""), int(q.get("port", 0)),
+                                                        payload=int(q.get("payload", 64))))
             if url.path == "/udp":
                 return self._send(200, udp_echo_test(self.config, q.get("host", ""), int(q.get("port", 0)), int(q.get("count", 10))))
             if url.path == "/arp":

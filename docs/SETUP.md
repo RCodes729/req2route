@@ -46,6 +46,7 @@ Restart the helper after editing the file.
 | No Req2Route tab in DevTools | Close and reopen DevTools after loading the extension |
 | Request list is empty | Click **Analyze**; DevTools only sees requests made while it is open |
 | "Helper not reachable" | Check the helper window is still open; run `python helper\server.py` to see errors |
+| TCP handshake says `Connection refused` (`WinError 10061`) | The target is approved but nothing is listening on it. Port 9000 needs the **echo server**, which is a separate program from the helper: run `helper\start-helper.bat` (it opens both), or `python helper\echo_server.py --port 9000`. **Check helper** now shows whether each approved `host:port` is listening. Restart the helper after pulling new code |
 | TCP/UDP test says "not an approved test target" | Only hosts in `helper\config.json` can be tested; add only machines your team controls |
 | Firewall prompt | Allow on **Private networks** |
 | ARP table empty | Normal on some VPNs; open a local site (your router page) first, then retry |

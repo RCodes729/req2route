@@ -1,4 +1,5 @@
 import { explainEntry, summarizePage, detectHttpVersion, groupByConnection, compareDns } from '../lib/layers.js';
+import { pageLedger } from '../lib/ledger.js';
 import { simulateCongestion, mathisThroughput, bandwidthDelayProduct } from '../lib/tcpsim.js';
 import { simulateWindow } from '../lib/window.js';
 import { parseCidr, splitSubnet } from '../lib/subnet.js';
@@ -98,6 +99,34 @@ function renderConnections() {
     ['Connection', 'Transport', 'HTTP', 'Server IP', 'Hosts', 'Requests', 'Handshake', 'Meaning'],
     groups.map(g => [g.connectionId, g.transport, g.httpVersion, g.serverIp || '—', g.hosts.join(', '), g.requests, g.opened ? `${g.handshakeMs} ms` : 'reused', g.meaning]),
   ) : el('p', { class: 'empty' }, 'No requests yet.'));
+  renderLedger();
+}
+
+function renderLedger() {
+  const { rows, summary: s } = pageLedger(entries);
+  const opened = rows.filter(r => r.newConnection);
+  if (!opened.length) {
+    $('#ledger').replaceChildren(el('p', { class: 'empty' }, 'No new TCP connection with a measurable handshake yet.'));
+    return;
+  }
+  const path = url => { try { const u = new URL(url); return (u.pathname + u.search).slice(0, 28) || '/'; } catch { return url.slice(0, 28); } };
+  $('#ledger').replaceChildren(
+    kv([
+      ['Path RTT', `${s.avgRttMs} ms average over ${s.connectionsMeasured} connection${s.connectionsMeasured === 1 ? '' : 's'}`],
+      ['Time to first byte', `${s.waitNetworkPct}% network round trips, ${s.waitServerPct}% server think time`],
+      ['Handshakes', `${s.handshakeMsPaid} ms paid; connection reuse avoided ${s.handshakeMsSavedByReuse} ms more`],
+      ['Slow-start model', s.modelChecked ? `agrees with ${s.modelAgrees} of ${s.modelChecked} downloads` : 'no download to check'],
+    ]),
+    table(['Request', 'RTT', 'TLS', 'First byte', 'Download: model vs observed'], opened.map(r => [
+      `${new URL(r.url).hostname}${path(r.url)}`,
+      `${r.rttMs} ms`,
+      r.tlsRtts === null ? 'none' : `${r.tlsRtts} RTT: ${r.tlsKind}`,
+      `${r.ttfbMs} ms = ${r.networkMs} network + ${r.serverThinkMs} server`,
+      r.transfer
+        ? `${r.bodyBytes} B in ${r.transfer.rounds} round${r.transfer.rounds === 1 ? '' : 's'}: model +${r.transfer.predictedReceiveMs} ms, observed ${r.transfer.observedReceiveMs} ms. ${r.transfer.verdict}`
+        : 'no body to check',
+    ])),
+  );
 }
 
 const PHASE_COLORS = { browser: 'var(--browser)', application: 'var(--app)', transport: 'var(--transport)' };
@@ -343,6 +372,9 @@ $('#helper-health').addEventListener('click', () => run('#helper-health-out', he
   ['Version', `${h.version} on ${h.os}`],
   ['dnspython', h.dnspython ? 'installed (TTL, CNAME, MX, NS)' : 'not installed (A/AAAA only)'],
   ['Test targets', `${h.allowedTargets.join(', ')} : ${h.allowedPorts.length ? h.allowedPorts.join(', ') : 'none'}`],
+  ...(h.targetStatus || []).map(t => [t.target, t.listening
+    ? 'echo server listening'
+    : el('span', { class: 'error' }, 'nothing listening: run helper\\start-helper.bat')]),
 ]), 'Checking…'));
 
 $('#dns-form').addEventListener('submit', ev => {
@@ -352,6 +384,40 @@ $('#dns-form').addEventListener('submit', ev => {
     table(['Type', 'Value', 'TTL'], d.records.map(r => [r.type, r.value, r.ttl ?? '—'])),
   ], 'Resolving…');
 });
+
+function renderTcp(t) {
+  const head = kv([['Target', t.target], ['Handshakes', `${t.succeeded} of ${t.attempts}`], ['Average', t.avgHandshakeMs !== null ? `${t.avgHandshakeMs} ms` : '—']]);
+  if (!t.succeeded) {
+    // One clear message instead of a row per identical failure.
+    return [head, el('p', { class: 'error' }, t.samples[0]?.error || 'The connection failed.'), t.hint ? el('p', { class: 'hint' }, t.hint) : null];
+  }
+  const z = t.sizes;
+  const out = [head, table(['Local port', 'Handshake'], t.samples.map(s => s.ok ? [s.local, `${s.handshakeMs} ms`] : ['—', s.error]))];
+  if (z) {
+    const linkCell = p => (p.linkBytes ? `${p.frameBytes}${p.padBytes ? ` (${p.padBytes} padding)` : ''}` : 'no Ethernet');
+    out.push(
+      el('h3', { class: 'sub' }, 'Handshake packet sizes ', badge(z.label)),
+      table(['Packet', 'IP + TCP bytes', 'On the link'], z.packets.map(p =>
+        [`${p.name} ${p.name === 'SYN-ACK' ? '←' : '→'}`, `${p.ipHeader} + ${p.tcpHeader} = ${p.ipBytes}`, linkCell(p)])),
+      kv([
+        ['Handshake total', `${z.handshakeIpBytes} bytes at the IP layer in 3 packets, 0 bytes of data`],
+        ['MSS', `${z.mss} bytes (${z.mssSource})`],
+      ]),
+    );
+    const d = z.dataExchange;
+    if (d) {
+      out.push(
+        el('h3', { class: 'sub' }, 'Then one data round trip ', badge('Tested')),
+        kv([
+          ['Sent / echoed', d.echoed ? `${d.sentBytes} B out, ${d.receivedBytes} B back in ${d.rttMs} ms (about 1 RTT)` : `${d.sentBytes} B out, ${d.receivedBytes} B back: the target did not echo`],
+          ['One data segment', `${d.headerBytes} header + ${d.payload} payload = ${d.ipBytes} bytes (${d.headerOverheadPct}% is headers)`],
+        ]),
+      );
+    }
+    out.push(el('p', { class: 'hint' }, z.note));
+  }
+  return out;
+}
 
 $('#sock-form').addEventListener('submit', ev => {
   ev.preventDefault();
@@ -365,10 +431,7 @@ $('#sock-form').addEventListener('submit', ev => {
       ['Note', u.note],
     ]), 'Sending 10 datagrams…');
   } else {
-    run('#sock-out', () => helper.tcp(f.get('host'), f.get('port')), t => [
-      kv([['Target', t.target], ['Handshakes', `${t.succeeded} of ${t.attempts}`], ['Average', t.avgHandshakeMs !== null ? `${t.avgHandshakeMs} ms` : '—']]),
-      table(['Local port', 'Handshake'], t.samples.map(s => s.ok ? [s.local, `${s.handshakeMs} ms`] : ['—', s.error])),
-    ], 'Connecting…');
+    run('#sock-out', () => helper.tcp(f.get('host'), f.get('port')), renderTcp, 'Connecting…');
   }
 });
 
