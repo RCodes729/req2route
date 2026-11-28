@@ -93,3 +93,19 @@ test('an unparseable server IP does not break the explanation', () => {
   });
   assert.equal(x.network.classification, null);
 });
+
+test('same connection value to different server IPs is not grouped as one connection', () => {
+  const mk = (ip, host) => ({ request: { method: 'GET', url: `https://${host}/` }, response: { status: 200, httpVersion: 'h2' }, serverIPAddress: ip, connection: '443', timings: {}, time: 1 });
+  const g = groupByConnection([mk('1.1.1.1', 'a.example'), mk('1.1.1.1', 'b.example'), mk('2.2.2.2', 'c.example')]);
+  assert.equal(g.length, 2);
+  assert.equal(g[0].requests, 2); // same IP: genuinely can share one multiplexed connection
+  assert.deepEqual(g[0].hosts.sort(), ['a.example', 'b.example']);
+});
+
+test('data: URLs do not add an empty host to a connection group', () => {
+  const g = groupByConnection([
+    { request: { method: 'GET', url: 'https://a.example/' }, response: { status: 200 }, timings: {} },
+    { request: { method: 'GET', url: 'data:image/png;base64,AAAA' }, response: { status: 200 }, timings: {} },
+  ]);
+  assert.deepEqual(g[0].hosts, ['a.example']);
+});

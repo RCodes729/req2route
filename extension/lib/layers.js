@@ -164,12 +164,15 @@ export function groupByConnection(entries) {
   const groups = new Map();
   for (const e of entries) {
     const id = e.connection || 'unknown';
-    if (!groups.has(id)) {
-      groups.set(id, { connectionId: id, hosts: new Set(), serverIp: e.serverIPAddress || null, httpVersion: detectHttpVersion(e), requests: 0, opened: false, handshakeMs: null });
+    // Chrome can report the same "connection" value (e.g. the port, 443) for sockets to different servers,
+    // and one TCP connection only ever has one server IP, so the IP is part of the key.
+    const key = id === 'unknown' ? id : `${id}|${e.serverIPAddress || ''}`;
+    if (!groups.has(key)) {
+      groups.set(key, { connectionId: id, hosts: new Set(), serverIp: e.serverIPAddress || null, httpVersion: detectHttpVersion(e), requests: 0, opened: false, handshakeMs: null });
     }
-    const g = groups.get(id);
+    const g = groups.get(key);
     g.requests++;
-    try { g.hosts.add(new URL(e.request.url).hostname); } catch { /* ignore */ }
+    try { const h = new URL(e.request.url).hostname; if (h) g.hosts.add(h); } catch { /* ignore */ } // data: URLs have no host
     const c = ms(e.timings?.connect);
     if (c) { g.opened = true; g.handshakeMs = c; }
   }

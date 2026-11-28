@@ -97,3 +97,22 @@ test('empty page does not throw', () => {
   assert.deepEqual(r.rows, []);
   assert.equal(r.summary.waitNetworkPct, null);
 });
+
+test('same connection value but different server IPs are different connections (Chrome reports "443")', () => {
+  // Real Wikipedia capture: every request had connection "443", yet the servers differed.
+  const wiki = entry({ connection: '443', serverIPAddress: '103.102.166.224', timings: { connect: -1, ssl: -1, wait: 50, receive: 5 } });
+  const cdn = entry({ connection: '443', serverIPAddress: '142.250.1.1', timings: { connect: 100, ssl: 50, wait: 80, receive: 30 } });
+  const r = pageLedger([wiki, cdn]);
+  assert.equal(r.summary.connectionsMeasured, 1);
+  assert.equal(r.rows.length, 1);                     // the wiki request is NOT given the CDN's RTT
+  assert.equal(r.summary.handshakeMsSavedByReuse, 0); // and no phantom "saved" time
+  assert.equal(r.skipped.length, 1);
+});
+
+test('a download far faster than the model is not called "agrees"', () => {
+  // Real capture: model +174.5 ms (1 extra RTT), observed 13.4 ms
+  const r = pageLedger([entry({ response: { status: 200, httpVersion: 'http/2.0', _transferSize: 24314 },
+    timings: { connect: 174.5, ssl: 0, wait: 314.5, receive: 13.4 } })]).rows[0].transfer;
+  assert.equal(r.predictedReceiveMs, 174.5);
+  assert.match(r.verdict, /^faster than the model/);
+});

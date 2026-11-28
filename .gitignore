@@ -11,3 +11,6 @@ helper/config.json
 Thumbs.db
 .vscode/
 .idea/
+
+# personal Claude Code settings
+.claude/settings.local.json
