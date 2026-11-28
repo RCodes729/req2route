@@ -18,6 +18,8 @@ export const INITIAL_CWND = 10; // segments, RFC 6928
 export const MSS = 1460;
 const MIN_RTT_MS = 1; // below this the timer resolution swamps the signal (loopback, cached sockets)
 
+// Chrome can reuse one "connection" value for sockets to different servers, so the server IP is part of the key.
+const connKey = e => `${e.connection}|${e.serverIPAddress || ''}`;
 const ms = v => (typeof v === 'number' && v >= 0 ? v : null);
 const round1 = v => Math.round(v * 10) / 10;
 
@@ -54,7 +56,7 @@ export function classifyTls(tlsRtts) {
 }
 
 function compareTransfer(observedMs, predictedMs, rtt) {
-  const slack = Math.max(rtt, predictedMs * 0.3);
+  const slack = Math.max(rtt * 0.5, predictedMs * 0.3);
   if (Math.abs(observedMs - predictedMs) <= slack) return 'agrees';
   return observedMs > predictedMs
     ? 'slower than the model: bandwidth, loss or server pacing is the limit, not RTT'
@@ -72,6 +74,7 @@ function rowFor(entry, connection) {
     label: LABEL,
     url: entry.request.url,
     connection: entry.connection ?? null,
+    connectionKey: connKey(entry),
     newConnection: connection.isOpener,
     rttMs: round1(connection.rttMs),
     rttSource: 'Observed: TCP handshake time of this connection',
@@ -117,19 +120,19 @@ export function pageLedger(entries) {
   const skipped = [];
 
   for (const e of entries) {
-    if (e.connection === undefined || e.connection === null || connections.has(e.connection)) continue;
+    if (e.connection === undefined || e.connection === null || connections.has(connKey(e))) continue;
     const connect = ms(e.timings?.connect);
     if (!connect) continue; // reused connection: not the opener
     if (detectHttpVersion(e) === 'HTTP/3') continue; // QUIC: no separate TCP handshake to measure
     const ssl = ms(e.timings?.ssl) ?? 0;
     const tcp = Math.max(0, connect - ssl);
     if (tcp < MIN_RTT_MS) continue;
-    connections.set(e.connection, { rttMs: tcp, tcpMs: tcp, sslMs: ssl, opener: e });
+    connections.set(connKey(e), { rttMs: tcp, tcpMs: tcp, sslMs: ssl, opener: e });
   }
 
   const rows = [];
   for (const e of entries) {
-    const known = connections.get(e.connection);
+    const known = connections.get(connKey(e));
     if (!known) {
       const why = detectHttpVersion(e) === 'HTTP/3'
         ? 'HTTP/3 runs over QUIC: no TCP handshake to read the RTT from'
@@ -151,7 +154,7 @@ export function pageLedger(entries) {
     avgRttMs: opened.length ? round1(opened.reduce((s, r) => s + r.rttMs, 0) / opened.length) : null,
     handshakeMsPaid: round1(opened.reduce((s, r) => s + r.savedIfReusedMs, 0)),
     handshakeMsSavedByReuse: round1(rows.filter(r => !r.newConnection)
-      .reduce((s, r) => s + (connections.get(r.connection)?.tcpMs ?? 0) + (connections.get(r.connection)?.sslMs ?? 0), 0)),
+      .reduce((s, r) => s + (connections.get(r.connectionKey)?.tcpMs ?? 0) + (connections.get(r.connectionKey)?.sslMs ?? 0), 0)),
     waitNetworkPct: totalWait > 0 ? Math.round(100 * rows.reduce((s, r) => s + r.networkMs, 0) / totalWait) : null,
     waitServerPct: totalWait > 0 ? Math.round(100 * rows.reduce((s, r) => s + r.serverThinkMs, 0) / totalWait) : null,
     modelChecked: checked.length,
